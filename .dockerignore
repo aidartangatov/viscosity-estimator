@@ -1,0 +1,55 @@
+# Data and APBS artefacts
+*.csv
+*.pdb
+*.io
+*.pqr
+*.log
+*.dx
+*.in
+
+# APBS pre-compiled binary
+APBS-3.4.1.Linux/
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Pre-commit
+.pre-commit-config.yaml
+
+# Byte-compiled / optimized / DLL files
+**/__pycache__/
+**/*.py[cod]
+
+# Distribution / packaging
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environment
+.env
+.venv/
+venv/
+
+# PyCharm
+.idea
+
+# VS Code
+.vscode/

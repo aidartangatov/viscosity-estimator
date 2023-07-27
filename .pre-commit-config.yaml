@@ -1,0 +1,53 @@
+repos:
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+    -   id: check-added-large-files
+        args: ['--maxkb=500']
+    -   id: check-executables-have-shebangs
+    -   id: check-ast
+    -   id: check-merge-conflict
+    -   id: check-yaml
+    -   id: end-of-file-fixer
+    -   id: name-tests-test
+    -   id: no-commit-to-branch
+        args: [--branch, master]
+    -   id: pretty-format-json
+        args: [--autofix, --indent, '   ']
+    -   id: trailing-whitespace
+        files: \.(py|sh|yml|yaml)$
+
+-   repo: https://github.com/pycqa/autoflake
+    rev: v2.2.0
+    hooks:
+    -   id: autoflake
+        args:
+            - --in-place
+            - --remove-all-unused-imports
+            - --remove-unused-variables
+            - --ignore-init-module-imports
+
+-   repo: https://github.com/pycqa/isort
+    rev: 5.12.0
+    hooks:
+    -   id: isort
+        args: ['--settings-path=setup.cfg']
+
+-   repo: https://github.com/psf/black
+    rev: 23.7.0
+    hooks:
+    -   id: black
+        args: [--skip-string-normalization, --line-length, '121']
+
+-   repo: https://github.com/pycqa/flake8
+    rev: 6.1.0
+    hooks:
+    - id: flake8
+      additional_dependencies: [
+          'flake8-blind-except',
+          'flake8-bugbear',
+          'flake8-comprehensions',
+          'flake8-implicit-str-concat',
+          'pydocstyle>=5.0.0',
+      ]
+      args: ['--config=setup.cfg']

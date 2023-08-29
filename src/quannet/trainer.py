@@ -1,14 +1,14 @@
 from pathlib import Path
 
 import lightning.pytorch as pl
-import torch.nn.functional as F
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from lightning.pytorch.loggers import Logger
 from lightning.pytorch.utilities import rank_zero_only
-from torch import optim
 
 from quannet.config import get_config
-from quannet.utils import DEFAULT_CONFIG, LOGGER, ROOT
+from quannet.dataset import build_input
+from quannet.tasks import LitModel, QuanModel
+from quannet.utils import DEFAULT_CONFIG, LOGGER, SETTINGS, check_dataset, increment_path
 
 
 class CustomLogger(Logger):
@@ -38,64 +38,43 @@ class CustomLogger(Logger):
         return self.logger.version
 
 
-class RegressionTask(pl.LightningModule):
-    def __init__(self, model):
-        super().__init__()
-        self.model = model
-
-    def forward(self, x):
-        return self.model(x)
-
-    def training_step(self, batch, batch_idx):
-        x, y = batch
-        y_hat = self(x)
-        loss = F.huber_loss(y_hat, y)
-        return loss
-
-    def validation_step(self, batch, batch_idx):
-        loss = self._shared_eval_step(batch, batch_idx)
-        metrics = {'val_loss': loss}
-        self.log_dict(metrics)
-        return metrics
-
-    def _eval_step(self, batch, batch_idx):
-        x, y = batch
-        y_hat = self.model(x)
-        loss = F.huber_loss(y_hat, y)
-        return loss
-
-    def predict_step(self, batch, batch_idx, dataloader_idx=0):
-        x, y = batch
-        y_hat = self.model(x)
-        return y_hat
-
-    def configure_optimizers(self):
-        optimizer = optim.Adam(self.model.parameters(), lr=self.model.args.lr)
-        return optimizer
-
-
-class Trainer:
-    def __init__(self, model, train_loader, val_loader, config=DEFAULT_CONFIG, overrides=None):
+class QuanTrainer:
+    def __init__(self, config=DEFAULT_CONFIG, overrides=None):
         self.args = get_config(config, overrides)
-        self.model = model
+        self.model = None
+        self.best = None
+
+        project = self.args.project or Path(SETTINGS['runs_dir'])
+        name = self.args.name or f'{self.args.mode}'
+        self.save_dir = Path(increment_path(Path(project) / name, exist_ok=self.args.exist_ok))
+        self.artefacts_dir = self.save_dir / SETTINGS['arefacts_dir_name']
+        self.dataset = check_dataset(
+            self.args.dataset,
+            path_csv_col=self.args.path_csv_col,
+            target_csv_col=self.args.target_csv_col,
+            min_structures=1,
+        )
+        train_loader, val_loader = build_input(
+            self.dataset['paths'],
+            self.dataset['targets'],
+            artefacts_dir=self.artefacts_dir,
+            train_val_split=True,
+            args=self.args,
+        )
+
         self.train_loader = train_loader
         self.val_loader = val_loader
         pl.seed_everything(42, workers=True)
 
-        dirpath = Path(self.args.dirpath)
-        if dirpath.is_absolute():
-            self.dirpath = str(dirpath)
-        else:
-            self.dirpath = str(ROOT / dirpath)
-
         self._set_pl_trainer()
 
     def _set_pl_trainer(self):
+        self.checkpoint_callback = self._checkpoint_callback(self.save_dir)
         self.trainer = pl.Trainer(
             max_epochs=self.args.max_epochs,
             accelerator=self.args.accelerator,
             devices=self.args.devices,
-            callbacks=[self._early_stop_callback(), self._checkpoint_callback(self.dirpath)],
+            callbacks=[self._early_stop_callback(), self.checkpoint_callback],
             deterministic=self.args.deterministic,
             logger=CustomLogger(LOGGER),
             fast_dev_run=True,
@@ -118,5 +97,13 @@ class Trainer:
         )
 
     def train(self):
-        lit_model = RegressionTask(model=self.model)
+        lit_model = LitModel(model=self.model, args=self.args)
         self.trainer.fit(lit_model, self.train_loader, self.val_loader)
+        best_model_path = str(self.save_dir / 'best_model.ckpt')
+        self.trainer.save_checkpoint(best_model_path)
+        self.best = best_model_path
+
+    def get_model(self, model: QuanModel, weights=None, verbose=True):
+        if weights:
+            model.load(weights, verbose=verbose)
+        return model

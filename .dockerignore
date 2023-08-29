@@ -1,4 +1,4 @@
-# Data and APBS artefacts
+# Runs artefacts
 *.csv
 *.pdb
 *.io
@@ -6,6 +6,8 @@
 *.log
 *.dx
 *.in
+runs/
+
 
 # APBS pre-compiled binary
 APBS-3.4.1.Linux/

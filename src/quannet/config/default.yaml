@@ -1,24 +1,32 @@
 # Default training settings and hyperparameters
 mode: train  # (str) QuanNet mode, i.e. train, val, predict
-data:  # (str, optional) CSV file with structure paths
+dataset:  # (str) dataset dir
 
 # Train settings -------------------------------------------------------------------------------------------------------
 model:  # (str, optional) path to model file, i.e. quannet.pt
 grid_dim: 96  # (int) number of grid points along all 3 axes
 grid_spacing: 0.75  # (float) spacing between grid points in Angstroms
 shell_width: 2.0  # (float) thickness of the surface shell in Angstroms
-num_augmentations: 10  # (int) augmentation level
+num_augmentations: 5  # (int) augmentation level
 
+lr: 0.001
 deterministic: True
 processes: 4
-output_dir:
 val_size: 0.2
-bins: 5
-batch_size: 10
+max_bins_stratify: 5  # Maximum number of bins to use for stratified train-val split
+batch_size: 4
+max_epochs: 3
+project:  # (str, optional) project name
+name:  # (str, optional) experiment name, results saved to 'project/name' directory
+accelerator: auto  # (str) "cpu", "gpu", etc., refer to lightning.pytorch.Trainer
+devices: auto  # (str | int | list[int]) the devices to use, refer to lightning.pytorch.Trainer
+every_n_train_steps:  # (int, optional) number of training steps between checkpoints,
+                      # refer to lightning.pytorch.callbacks.ModelCheckpoint
+path_csv_col: path
+target_csv_col: target
 
-dirpath: runs  # (str) directory to save the model file relative to root or an absolute path
-accelerator: auto  # (str) "cpu", "gpu", etc., refer to accelerator param in lightning.pytorch.Trainer
-devices: auto  # (str | int | list[int]) the devices to use, refer to devices param in lightning.pytorch.Trainer
+resume: False  # (bool) resume training from last checkpoint
+exist_ok: False  # (bool) whether to overwrite existing experiment
 
 # Prediction settings --------------------------------------------------------------------------------------------------
 source:  # (str) source directory for PDB structures

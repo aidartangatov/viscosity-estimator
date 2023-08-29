@@ -1,20 +1,21 @@
 import torch
 import torch.nn as nn
 
+from quannet.tasks import QuanModel
 from quannet.utils import IterableNamespace
 
 
-class CNN3DModule(nn.Module):
+class CNN3DModule(QuanModel):
     N_FILTERS = 2
 
-    def __init__(self, path, grid_dim=96, grid_spacing=0.75, shell_width=2.0, num_augmentations=10):
-        super().__init__()
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self.args = IterableNamespace(
             **{
-                'grid_dim': grid_dim,
-                'grid_spacing': grid_spacing,
-                'shell_width': shell_width,
-                'num_augmentations': num_augmentations,
+                'grid_dim': self.args.grid_dim,
+                'grid_spacing': self.args.grid_spacing,
+                'shell_width': self.args.shell_width,
+                'num_augmentations': self.args.num_augmentations,
             }
         )
 
@@ -42,10 +43,10 @@ class CNN3DModule(nn.Module):
             self._conv_block(n_filters * 32, n_filters * 512, with_pooling=True),
         ]
 
-        if self.grid_dim < 129:
+        if self.args.grid_dim < 129:
             del convolution_blocks[0]  # Remove the first convolution block
             del convolution_blocks[-1][-1]  # Remove pooling for the last convolution layer
-            if self.grid_dim < 64:
+            if self.args.grid_dim < 64:
                 del convolution_blocks[-2][-1]  # Remove pooling for the second to last convolution layer
 
         return convolution_blocks

@@ -270,7 +270,7 @@ def entrypoint(debug=''):
         overrides['structures'] = DEFAULT_CONFIG.structures or TEST_STRUCTURES
         LOGGER.warning(f"'structures' is missing. Using default 'structures={overrides['structures']}'.")
 
-    elif mode in ('train', 'val') and 'target' not in overrides:
+    elif mode in ('train', 'val') and 'dataset' not in overrides:
         LOGGER.exception(f"'target' is missing.\n{CLI_HELP_MESSAGE}")
         return
 

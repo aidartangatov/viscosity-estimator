@@ -7,28 +7,32 @@ import tempfile
 from functools import partial
 from itertools import islice
 from pathlib import Path
+from typing import Optional, Tuple
 
 import numpy as np
 import pandas as pd
 from Bio.PDB import PDBIO, PDBParser
 from sklearn.model_selection import train_test_split
 
-from quannet.constatns import (
-    COL_PATH,
-    COL_TARGET,
-    DEFAULT_GRID_PARAMS,
-    GRID_DIM_KEY,
-    GRID_SPACING_KEY,
-    INPUT_MOL_KEY,
-    NUM_AUGMENTATIONS_KEY,
-    ROT_X_KEY,
-    ROT_Y_KEY,
-    ROT_Z_KEY,
-    SHELL_WIDTH_KEY,
-)
+from quannet.utils import LOGGER, ArrayLike
 
 APBS_PATH = os.environ['APBS_PATH']
 PYTHON = os.environ['PYTHON']
+
+INPUT_MOL_KEY = 'input_mol'
+ROT_X_KEY = 'rot_x'
+ROT_Y_KEY = 'rot_y'
+ROT_Z_KEY = 'rot_z'
+GRID_SPACING_KEY = 'grid_spacing'
+GRID_DIM_KEY = 'grid_dim'
+SHELL_WIDTH_KEY = 'shell_width'
+NUM_AUGMENTATIONS_KEY = 'num_augmentations'
+DEFAULT_GRID_PARAMS = {
+    GRID_DIM_KEY: 96,
+    GRID_SPACING_KEY: 0.75,
+    SHELL_WIDTH_KEY: 2.0,
+    NUM_AUGMENTATIONS_KEY: 10,
+}
 
 
 class APBSWrapper:
@@ -280,63 +284,6 @@ def get_esp_array(params, output_dir, remove_artefacts=True, return_mol=False):
     return esp_array
 
 
-def process_paths_file(path):
-    paths_dict = {}
-    with Path(path).open('r') as f:
-        for structure_path in f:
-            structure_path = Path(structure_path)
-            if not structure_path.exists():
-                continue
-            paths_dict[structure_path.with_suffix('')] = structure_path
-    return paths_dict
-
-
-def prepare_data(df, output_dir, processes=4, train_mode=False, **kwargs):
-    """Prepare data for training or prediction."""
-
-    grid_dim = kwargs.get(GRID_DIM_KEY, DEFAULT_GRID_PARAMS[GRID_DIM_KEY])
-    grid_spacing = kwargs.get(GRID_SPACING_KEY, DEFAULT_GRID_PARAMS[GRID_SPACING_KEY])
-    shell_width = kwargs.get(SHELL_WIDTH_KEY, DEFAULT_GRID_PARAMS[SHELL_WIDTH_KEY])
-    num_augmentations = kwargs.get(NUM_AUGMENTATIONS_KEY, DEFAULT_GRID_PARAMS[NUM_AUGMENTATIONS_KEY])
-
-    sample_size = len(df) * num_augmentations
-    data = np.zeros((sample_size, grid_dim, grid_dim, grid_dim))
-    target = np.zeros(sample_size) if train_mode else None
-    structure_ids = np.zeros(sample_size, dtype=np.int32)
-
-    counter = 0
-    id2structure = {}
-    for structure_idx, row in df.reset_index(drop=True).iterrows():
-        structure_path = Path(row[COL_PATH])
-        if not structure_path.exists():
-            raise FileNotFoundError(f'Structure path {str(structure_path)} is not correct')
-        esp_grids = generate_esp_grids(
-            str(structure_path),
-            output_dir=output_dir,
-            grid_dim=grid_dim,
-            grid_spacing=grid_spacing,
-            shell_width=shell_width,
-            num_augmentations=num_augmentations,
-            processes=processes,
-        )
-        for grid in esp_grids:
-            data[counter] = grid
-            structure_ids[counter] = structure_idx
-            if train_mode:
-                target[counter] = np.log10(row[COL_TARGET])
-            counter += 1
-        id2structure[structure_idx] = structure_path.with_suffix('')
-
-    # Convert format into [sample_size, channels, depth, height, width]
-    data = np.expand_dims(data, 1)
-    return {
-        'data': data,
-        'target': target,
-        'structure_ids': structure_ids,
-        'id2structure': id2structure,
-    }
-
-
 def generate_esp_grids(structure_file, output_dir, return_mol=False, processes=4, **kwargs):
     """Generate ESP grids from the given molecule file."""
 
@@ -374,12 +321,54 @@ def generate_esp_grids(structure_file, output_dir, return_mol=False, processes=4
     return esp_array_output
 
 
-def split_indices(y, val_size=0.1, bins=None):
-    """Split the dataset into training and validation sets."""
+def find_stratification_bins(y: ArrayLike, max_bins_stratify: int = 5, min_samples_per_bin: int = 2):
+    """
+    Attempt to find a suitable number of bins to stratify the data into.
+
+    Args:
+        y: The array of labels to stratify by.
+        max_bins_stratify: The maximum number of bins to try for stratification.
+        min_samples_per_bin: Minimum number of samples required per bin.
+
+    Returns:
+        pandas.Series with the same length as `y` indicating the bin each sample belongs to, or
+        None if no suitable stratification is possible.
+    """
+    for n_bins in range(max_bins_stratify, 1, -1):
+        stratify = pd.Series(pd.qcut(y, q=n_bins, labels=False))
+        if all(stratify.value_counts() >= min_samples_per_bin):
+            return stratify
+    return None
+
+
+def split_indices(
+    y: ArrayLike, val_size: float = 0.1, max_bins_stratify: Optional[int] = None
+) -> Tuple[ArrayLike, ArrayLike]:
+    """
+    Split the dataset into training and validation sets.
+
+    Args:
+        y: The array of labels.
+        val_size: The proportion of the dataset to include in the test split.
+        max_bins_stratify: Maximum number of bins to use for stratification.
+
+    Returns:
+        Indices for training set.
+        Indices for validation set.
+    """
 
     stratify = None
-    if bins is not None:
-        stratify = pd.qcut(y, q=bins, labels=False)
+    if max_bins_stratify is not None:
+        stratify = find_stratification_bins(y, max_bins_stratify=max_bins_stratify)
+
+    if stratify is not None:
+        unique_bins = len(stratify.unique())
+        min_test_size = unique_bins / len(y)
+        if val_size < min_test_size:
+            LOGGER.warning(
+                f'val_size {val_size} is too small for the number of classes {unique_bins}. Skipping stratification.'
+            )
+            stratify = None
 
     train_index, val_index = train_test_split(range(len(y)), test_size=val_size, stratify=stratify, random_state=42)
 

@@ -11,6 +11,7 @@ import yaml
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]
+# TODO: set right path, better do in settings
 TEST_STRUCTURES = ROOT / 'structures'
 DEFAULT_CONFIG_PATH = ROOT / 'config/default.yaml'
 LOGGING_NAME = 'quannet'

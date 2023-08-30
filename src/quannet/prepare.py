@@ -7,35 +7,68 @@ import tempfile
 from functools import partial
 from itertools import islice
 from pathlib import Path
-from typing import Optional, Tuple
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, Dict, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
 from Bio.PDB import PDBIO, PDBParser
 from sklearn.model_selection import train_test_split
 
-from quannet.utils import LOGGER, ArrayLike
+from quannet.config import get_config
+from quannet.utils import DEFAULT_CONFIG, LOGGER, ArrayLike
+
+if TYPE_CHECKING:
+    import Bio.PDB.Structure
 
 APBS_PATH = os.environ['APBS_PATH']
 PYTHON = os.environ['PYTHON']
-
 INPUT_MOL_KEY = 'input_mol'
 ROT_X_KEY = 'rot_x'
 ROT_Y_KEY = 'rot_y'
 ROT_Z_KEY = 'rot_z'
-GRID_SPACING_KEY = 'grid_spacing'
 GRID_DIM_KEY = 'grid_dim'
+GRID_SPACING_KEY = 'grid_spacing'
 SHELL_WIDTH_KEY = 'shell_width'
 NUM_AUGMENTATIONS_KEY = 'num_augmentations'
-DEFAULT_GRID_PARAMS = {
-    GRID_DIM_KEY: 96,
-    GRID_SPACING_KEY: 0.75,
-    SHELL_WIDTH_KEY: 2.0,
-    NUM_AUGMENTATIONS_KEY: 10,
-}
+TRANSFORMS_ARGUMENTS = GRID_DIM_KEY, GRID_SPACING_KEY, SHELL_WIDTH_KEY, NUM_AUGMENTATIONS_KEY
 
 
 class APBSWrapper:
+    """
+    A Python wrapper for the Adaptive Poisson-Boltzmann Solver (APBS) command-line tool.
+
+    This class serves as an interface to APBS, simplifying the process of setting up,
+    running, and post-processing electrostatic calculations. It can run PDB to PQR
+    conversions, manage output and log files, prepare configuration files, and load
+    results into memory.
+
+    Attributes:
+        input_path: The input file path containing the molecular structure.
+        output_dir: The directory where all output files will be saved.
+        artefacts_paths (dict): A mapping of various output and log files.
+        grid_dim (int): The grid dimensions for the APBS calculations.
+        grid_spacing (float): The spacing between grid points.
+        inner_dielectric (float): The dielectric constant for the inner molecule.
+        outer_dielectric (float): The dielectric constant for the surrounding solvent.
+        keep_artefacts (bool): Whether to keep or remove output artefacts after calculations.
+        delta (tuple): The grid spacing in the x, y, and z directions.
+        network (dict): Holds the calculated grid values.
+        min (list): Minimum grid value.
+        has_run (bool): Flag indicating whether the APBS calculation has been executed.
+
+    Methods:
+        _run_pdb2pqr: Runs PDB to PQR conversion using pdb2pqr utility.
+        _prepare_config_file: Prepares the configuration file for APBS run.
+        run: Executes the APBS calculation.
+        load_network: Loads the calculated grid into memory.
+        check_probe: Checks if a point is within a certain threshold.
+        remove_artefacts: Removes all output artefacts if 'keep_artefacts' is set to False.
+
+    Note:
+        It's advisable to call the 'run' method before accessing other functionalities.
+    """
+
     line_preceding_network_coordinates = 'object 3 class array type double rank 0 items'
 
     def __init__(
@@ -55,7 +88,7 @@ class APBSWrapper:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        self.artefacts_path = {
+        self.artefacts_paths = {
             'pqr': self.output_dir / self.input_path.with_suffix('.pqr').name,
             'log': self.output_dir / self.input_path.with_suffix('.log').name,
             'config': self.output_dir / config_file_name,
@@ -86,7 +119,7 @@ class APBSWrapper:
             '-m',
             'pdb2pqr',
             str(self.input_path),
-            str(self.artefacts_path['pqr']),
+            str(self.artefacts_paths['pqr']),
             '-ff=AMBER',
             '--whitespace',
             '--noopt',
@@ -107,7 +140,7 @@ class APBSWrapper:
 
         apbs_config_lines = (
             'read',
-            f'mol pqr {str(self.artefacts_path["pqr"])}',
+            f'mol pqr {str(self.artefacts_paths["pqr"])}',
             'end',
             '',
             'elec name viz',
@@ -128,16 +161,15 @@ class APBSWrapper:
             f'temp {apbs_params["temp"]}',
             'calcenergy total',
             'calcforce no',
-            # f'write charge dx {str(self.artefacts_path["accessibility"].with_suffix(""))}',
-            f'write vdw dx {str(self.artefacts_path["accessibility"].with_suffix(""))}',
-            f'write pot dx {str(self.artefacts_path["potential"].with_suffix(""))}',
+            f'write vdw dx {str(self.artefacts_paths["accessibility"].with_suffix(""))}',
+            f'write pot dx {str(self.artefacts_paths["potential"].with_suffix(""))}',
             'end',
             '',
             'quit',
             '',
         )
 
-        with self.artefacts_path['config'].open('w') as f:
+        with self.artefacts_paths['config'].open('w') as f:
             f.write('\n'.join(apbs_config_lines))
 
     def run(self, **kwargs):
@@ -145,8 +177,8 @@ class APBSWrapper:
         self._run_pdb2pqr()
         self._prepare_config_file(**kwargs)
 
-        command = [APBS_PATH, str(self.artefacts_path['config'])]
-        with self.artefacts_path['log'].open('w') as logf:
+        command = [APBS_PATH, str(self.artefacts_paths['config'])]
+        with self.artefacts_paths['log'].open('w') as logf:
             try:
                 subprocess.run(command, stdout=logf, check=True)
             except subprocess.CalledProcessError:
@@ -155,7 +187,7 @@ class APBSWrapper:
         print(f'Running APBS by command: {" ".join(command)}')
 
         try:
-            with self.artefacts_path['log'].open('r') as f:
+            with self.artefacts_paths['log'].open('r') as f:
                 for line in f:
                     if 'Grid center:' in line:
                         lst = line.split(':')[1].replace('(', '').replace(')', '').split(', ')
@@ -174,7 +206,7 @@ class APBSWrapper:
         if type_network not in valid_network_types:
             raise ValueError(f'Valid network types are: {", ".join(valid_network_types)}; you got {type_network}')
 
-        with self.artefacts_path[type_network].open('r') as f:
+        with self.artefacts_paths[type_network].open('r') as f:
             for line in f:
                 if line.startswith(self.line_preceding_network_coordinates):
                     break
@@ -195,12 +227,20 @@ class APBSWrapper:
         return False
 
     def remove_artefacts(self):
-        for path in self.artefacts_path.values():
+        for path in self.artefacts_paths.values():
             if path.exists():
                 path.unlink()
 
 
-def get_molecule(input_file):
+def get_molecule(input_file: Union[str, Path]) -> 'Bio.PDB.Structure.Structure':
+    """Retrieve a molecule's structure from a given input file using PDB parser.
+
+    Args:
+        input_file: Path to the file that contains the molecular structure data in PDB format.
+
+    Returns:
+        Bio.PDB.Structure.Structure: A structure object that represents the parsed molecule.
+    """
     pdb_parser = PDBParser(QUIET=True)
     structure = pdb_parser.get_structure('pdb', input_file)
     return structure
@@ -248,10 +288,32 @@ def save_molecule(structure):
     return file_path
 
 
-def get_esp_array(params, output_dir, remove_artefacts=True, return_mol=False):
-    """Generate ESP array from given parameters."""
+def get_esp_array(
+    params: Dict, output_dir: Union[str, Path] = '.', remove_artefacts: bool = True, return_mol: bool = False
+):
+    """
+    Generates an Electrostatic Potential (ESP) array based on the provided parameters and molecular structure.
 
-    # Assuming euler_rotate and get_molecule are available in this scope
+    Given a molecular structure, this function rotates the molecule, performs electrostatic calculations
+    using the APBSWrapper class, and then creates an ESP array.
+
+    Args:
+        params: A dictionary containing various parameters required for calculations.
+            Expected keys include INPUT_MOL_KEY, ROT_X_KEY, ROT_Y_KEY, ROT_Z_KEY, GRID_DIM_KEY,
+            GRID_SPACING_KEY, and SHELL_WIDTH_KEY.
+        output_dir: The directory where all output files will be saved. Defaults to the current directory.
+        remove_artefacts: Flag to indicate if output files should be removed after calculations.
+        return_mol: Flag to indicate if the rotated molecular structure should also be returned.
+
+    Returns:
+        np.ndarray: An ESP array holding the calculated electrostatic potential.
+        Bio.PDB.Structure.Structure (optional): The rotated molecular structure, if return_mol is set to True.
+
+    Notes:
+        1. Make sure to call the 'run' method of APBSWrapper before accessing other functionalities.
+        2. The electrostatic potential is set to zero for points outside the given SHELL_WIDTH_KEY threshold.
+    """
+
     structure = euler_rotate(params[INPUT_MOL_KEY], params[ROT_X_KEY], params[ROT_Y_KEY], params[ROT_Z_KEY])
     structure_path = save_molecule(structure)
 
@@ -284,22 +346,42 @@ def get_esp_array(params, output_dir, remove_artefacts=True, return_mol=False):
     return esp_array
 
 
-def generate_esp_grids(structure_file, output_dir, return_mol=False, processes=4, **kwargs):
-    """Generate ESP grids from the given molecule file."""
+def generate_esp_grids(
+    structure_file: Union[str, Path],
+    output_dir: Union[str, Path] = '.',
+    config: Union[Dict, SimpleNamespace] = DEFAULT_CONFIG,
+    return_mol: bool = False,
+    **kwargs,
+):
+    """Generate ESP grids from a given molecule file (optionally return the molecule object).
+
+    Args:
+        structure_file: The file path or object that contains the molecular structure data.
+        output_dir: The directory where generated grids will be saved. Defaults to the current directory.
+        config: Configuration settings for grid generation.
+        return_mol: Flag to indicate whether the molecule object should be returned along with the ESP array.
+        **kwargs: Additional keyword arguments to override `config` settings.
+
+    Raises:
+        ValueError: If any required arguments are missing in the `config`.
+
+    Returns:
+        List of ESP arrays or a list of tuples containing ESP arrays and molecule objects, if `return_mol` is True.
+    """
+
+    config = get_config(config, kwargs)
+    missing_args = [arg for arg in TRANSFORMS_ARGUMENTS if arg not in config]
+    if missing_args:
+        raise ValueError(f"Following arguments are missing: {', '.join(missing_args)}")
 
     # Assuming get_molecule is available in this scope
     structure = get_molecule(structure_file)
 
-    grid_dim = kwargs.get(GRID_DIM_KEY, DEFAULT_GRID_PARAMS[GRID_DIM_KEY])
-    grid_spacing = kwargs.get(GRID_SPACING_KEY, DEFAULT_GRID_PARAMS[GRID_SPACING_KEY])
-    shell_width = kwargs.get(SHELL_WIDTH_KEY, DEFAULT_GRID_PARAMS[SHELL_WIDTH_KEY])
-    num_augmentations = kwargs.get(NUM_AUGMENTATIONS_KEY, DEFAULT_GRID_PARAMS[NUM_AUGMENTATIONS_KEY])
-
     shared_params = {
         INPUT_MOL_KEY: structure,
-        GRID_DIM_KEY: grid_dim,
-        GRID_SPACING_KEY: grid_spacing,
-        SHELL_WIDTH_KEY: shell_width,
+        GRID_DIM_KEY: config.grid_dim,
+        GRID_SPACING_KEY: config.grid_spacing,
+        SHELL_WIDTH_KEY: config.shell_width,
     }
 
     params_list = [
@@ -309,10 +391,10 @@ def generate_esp_grids(structure_file, output_dir, return_mol=False, processes=4
             ROT_Z_KEY: random.uniform(0, 180),
             **shared_params,
         }
-        for _ in range(num_augmentations)
+        for _ in range(config.num_augmentations)
     ]
 
-    processes = min(multiprocessing.cpu_count() - 1, processes)
+    processes = min(multiprocessing.cpu_count() - 1, config.processes)
     with multiprocessing.Pool(processes=processes) as p:
         esp_array_output = p.map(partial(get_esp_array, return_mol=return_mol, output_dir=output_dir), params_list)
 

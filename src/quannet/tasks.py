@@ -1,12 +1,12 @@
 from typing import Union
 
-import lightning.pytorch as pl
 import torch
 import torch.nn.functional as F
 from torch import nn, optim
+import lightning.pytorch as pl
 
+from quannet.utils import LOGGER, DEFAULT_CONFIG, IterableNamespace
 from quannet.config import get_config
-from quannet.utils import DEFAULT_CONFIG, LOGGER, IterableNamespace
 
 
 class QuanModel(nn.Module):

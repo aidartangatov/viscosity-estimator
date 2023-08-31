@@ -1,14 +1,14 @@
 from pathlib import Path
 
 import lightning.pytorch as pl
-from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from lightning.pytorch.loggers import Logger
+from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from lightning.pytorch.utilities import rank_zero_only
 
+from quannet.tasks import LitModel, QuanModel
+from quannet.utils import LOGGER, SETTINGS, DEFAULT_CONFIG, check_dataset, increment_path
 from quannet.config import get_config
 from quannet.dataset import build_input
-from quannet.tasks import LitModel, QuanModel
-from quannet.utils import DEFAULT_CONFIG, LOGGER, SETTINGS, check_dataset, increment_path
 
 
 class CustomLogger(Logger):

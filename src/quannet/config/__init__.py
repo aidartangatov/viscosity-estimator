@@ -1,17 +1,17 @@
-import ast
 import re
+import ast
 import sys
-from difflib import get_close_matches
-from pathlib import Path
 from types import SimpleNamespace
 from typing import Dict, List, Union
+from difflib import get_close_matches
+from pathlib import Path
 
 from quannet.utils import (
+    LOGGER,
     DEFAULT_CONFIG,
+    TEST_STRUCTURES,
     DEFAULT_CONFIG_DICT,
     DEFAULT_CONFIG_PATH,
-    LOGGER,
-    TEST_STRUCTURES,
     IterableNamespace,
     load_yaml,
     print_yaml,

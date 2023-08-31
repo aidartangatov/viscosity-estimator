@@ -1,22 +1,21 @@
-import multiprocessing
 import os
 import random
 import string
-import subprocess
 import tempfile
+import subprocess
+import multiprocessing
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, Dict, Tuple, Union, Optional
+from pathlib import Path
 from functools import partial
 from itertools import islice
-from pathlib import Path
-from types import SimpleNamespace
-from typing import TYPE_CHECKING, Dict, Optional, Tuple, Union
 
-import numpy as np
-import pandas as pd
 from Bio.PDB import PDBIO, PDBParser
-from sklearn.model_selection import train_test_split
+import pandas as pd
+import numpy as np
 
+from quannet.utils import DEFAULT_CONFIG, ArrayLike
 from quannet.config import get_config
-from quannet.utils import DEFAULT_CONFIG, LOGGER, ArrayLike
 
 if TYPE_CHECKING:
     import Bio.PDB.Structure
@@ -370,7 +369,8 @@ def generate_esp_grids(
     """
 
     config = get_config(config, kwargs)
-    missing_args = [arg for arg in TRANSFORMS_ARGUMENTS if arg not in config]
+    config_keys = [k for k, v in config]
+    missing_args = [arg for arg in TRANSFORMS_ARGUMENTS if arg not in config_keys]
     if missing_args:
         raise ValueError(f"Following arguments are missing: {', '.join(missing_args)}")
 
@@ -425,7 +425,7 @@ def find_stratification_bins(y: ArrayLike, max_bins_stratify: int = 5, min_sampl
 
 def split_indices(
     y: ArrayLike, val_size: float = 0.1, max_bins_stratify: Optional[int] = None
-) -> Tuple[ArrayLike, ArrayLike]:
+) -> Tuple[np.ndarray, np.ndarray]:
     """
     Split the dataset into training and validation sets.
 
@@ -439,19 +439,42 @@ def split_indices(
         Indices for validation set.
     """
 
+    if len(y) == 0:
+        raise ValueError("Input array 'y' cannot be empty.")
+
+    if val_size <= 0.0 or val_size >= 1.0:
+        raise ValueError('val_size should be in the range [0.0, 1.0].')
+
+    n_samples = len(y)
+    indices = np.arange(n_samples)
+
     stratify = None
+    # Attempt to find stratification bins
     if max_bins_stratify is not None:
         stratify = find_stratification_bins(y, max_bins_stratify=max_bins_stratify)
 
+    train_index, val_index = [], []
+
     if stratify is not None:
-        unique_bins = len(stratify.unique())
-        min_test_size = unique_bins / len(y)
-        if val_size < min_test_size:
-            LOGGER.warning(
-                f'val_size {val_size} is too small for the number of classes {unique_bins}. Skipping stratification.'
-            )
-            stratify = None
+        # Check that each stratification bin has enough samples
+        bin_counts = np.bincount(stratify)
+        min_bin_count = np.min(bin_counts)
+        if min_bin_count < 2:
+            raise ValueError('Each stratification bin must have at least 2 samples.')
 
-    train_index, val_index = train_test_split(range(len(y)), test_size=val_size, stratify=stratify, random_state=42)
+        # Stratified sampling
+        for bin in np.unique(stratify):
+            bin_indices = indices[stratify == bin]
+            n_train = round((1 - val_size) * len(bin_indices))
+            train_indices_bin = np.random.choice(bin_indices, n_train, replace=False)
+            val_indices_bin = list(set(bin_indices) - set(train_indices_bin))
 
-    return train_index, val_index
+            train_index.extend(train_indices_bin)
+            val_index.extend(val_indices_bin)
+    else:
+        # Random sampling without stratification
+        n_train = round((1 - val_size) * n_samples)
+        train_index = np.random.choice(indices, n_train, replace=False)
+        val_index = list(set(indices) - set(train_index))
+
+    return np.array(train_index), np.array(val_index)

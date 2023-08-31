@@ -1,10 +1,10 @@
+from typing import Dict, Tuple, Union, Optional
 from pathlib import Path
-from typing import Dict, Optional, Tuple, Union
 
 import torch
 
+from quannet.utils import LOGGER, DEFAULT_CONFIG_DICT, DEFAULT_CONFIG_KEYS, load_yaml, search_file
 from quannet.trainer import QuanTrainer
-from quannet.utils import DEFAULT_CONFIG_DICT, DEFAULT_CONFIG_KEYS, LOGGER, load_yaml, search_file
 
 
 def load_model_from_checkpoint(

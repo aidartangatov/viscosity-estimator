@@ -1,20 +1,17 @@
 import os
 import random
-import string
 import tempfile
 import subprocess
 import multiprocessing
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Dict, Tuple, Union, Optional
+from typing import TYPE_CHECKING, Dict, List, Tuple, Union, Optional
 from pathlib import Path
-from functools import partial
 from itertools import islice
 
 from Bio.PDB import PDBIO, PDBParser
-import pandas as pd
 import numpy as np
 
-from quannet.utils import DEFAULT_CONFIG, ArrayLike
+from quannet.utils import LOGGER, DEFAULT_CONFIG, DEFAULT_CONFIG_KEYS
 from quannet.config import get_config
 
 if TYPE_CHECKING:
@@ -22,25 +19,15 @@ if TYPE_CHECKING:
 
 APBS_PATH = os.environ['APBS_PATH']
 PYTHON = os.environ['PYTHON']
-INPUT_MOL_KEY = 'input_mol'
-ROT_X_KEY = 'rot_x'
-ROT_Y_KEY = 'rot_y'
-ROT_Z_KEY = 'rot_z'
-GRID_DIM_KEY = 'grid_dim'
-GRID_SPACING_KEY = 'grid_spacing'
-SHELL_WIDTH_KEY = 'shell_width'
-NUM_AUGMENTATIONS_KEY = 'num_augmentations'
-TRANSFORMS_ARGUMENTS = GRID_DIM_KEY, GRID_SPACING_KEY, SHELL_WIDTH_KEY, NUM_AUGMENTATIONS_KEY
 
 
 class APBSWrapper:
     """
     A Python wrapper for the Adaptive Poisson-Boltzmann Solver (APBS) command-line tool.
 
-    This class serves as an interface to APBS, simplifying the process of setting up,
-    running, and post-processing electrostatic calculations. It can run PDB to PQR
-    conversions, manage output and log files, prepare configuration files, and load
-    results into memory.
+    This class serves as an interface to APBS, simplifying the process of setting up, running, and post-processing
+    electrostatic calculations. It can run PDB to PQR conversions, manage output and log files, prepare configuration
+    files, and load results into memory.
 
     Attributes:
         input_path: The input file path containing the molecular structure.
@@ -122,9 +109,10 @@ class APBSWrapper:
             '-ff=AMBER',
             '--whitespace',
             '--noopt',
+            '--quiet',
         ]
-        print(f'Running PDB2PQR by command: {" ".join(command)}')
-        subprocess.run(command)
+        LOGGER.debug(f'Running PDB2PQR by command: {" ".join(command)}')
+        subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def _prepare_config_file(self, **kwargs):
         apbs_params = {
@@ -183,7 +171,7 @@ class APBSWrapper:
             except subprocess.CalledProcessError:
                 raise RuntimeError(f'Error running APBS with command: {" ".join(command)}')
 
-        print(f'Running APBS by command: {" ".join(command)}')
+        LOGGER.debug(f'Running APBS by command: {" ".join(command)}')
 
         try:
             with self.artefacts_paths['log'].open('r') as f:
@@ -240,20 +228,34 @@ def get_molecule(input_file: Union[str, Path]) -> 'Bio.PDB.Structure.Structure':
     Returns:
         Bio.PDB.Structure.Structure: A structure object that represents the parsed molecule.
     """
+    structure_name = Path(input_file).with_suffix('').name
     pdb_parser = PDBParser(QUIET=True)
-    structure = pdb_parser.get_structure('pdb', input_file)
+    structure = pdb_parser.get_structure(id=structure_name, file=input_file)
     return structure
 
 
-def euler_rotate(structure, theta_x, theta_y, theta_z):
+def euler_rotate(
+    structure: 'Bio.PDB.Structure.Structure', rotations: Tuple[float, float, float]
+) -> 'Bio.PDB.Structure.Structure':
     """
     Apply Euler rotations to a molecular structure around the x, y, and z axes.
+
+    Args:
+        structure: The molecular structure to be rotated.
+        rotations: A tuple containing the Euler angles (in radians) to rotate the structure around
+                   the x, y, and z axes, respectively.
+
+    Returns:
+        Bio.PDB.Structure.Structure: The rotated molecular structure.
+
+    Note:
+        The function modifies the input structure in place and also returns it.
     """
-    # Define rotation matrices
+
+    theta_x, theta_y, theta_z = rotations
+
     Rx = np.array([[1, 0, 0], [0, np.cos(theta_x), -np.sin(theta_x)], [0, np.sin(theta_x), np.cos(theta_x)]])
-
     Ry = np.array([[np.cos(theta_y), 0, np.sin(theta_y)], [0, 1, 0], [-np.sin(theta_y), 0, np.cos(theta_y)]])
-
     Rz = np.array([[np.cos(theta_z), -np.sin(theta_z), 0], [np.sin(theta_z), np.cos(theta_z), 0], [0, 0, 1]])
 
     # Combine rotations
@@ -268,60 +270,79 @@ def euler_rotate(structure, theta_x, theta_y, theta_z):
     return structure
 
 
-def generate_random_string(length=10):
-    """Generate random string of specified length."""
-    letters = string.ascii_lowercase
-    return ''.join(random.choice(letters) for _ in range(length))
+def save_molecule(structure: 'Bio.PDB.Structure.Structure', prefix: Optional[str] = None) -> Path:
+    """
+    Save the given molecular structure to a temporary PDB file.
 
+    This function takes a Bio.PDB.Structure.Structure object as input and saves it to a temporary PDB file.
+    The file is saved in the temporary directory of the operating system.
 
-def save_molecule(structure):
-    """Save the molecule to a temporary PDB file."""
+    Args:
+        structure: The molecular structure to be saved.
+        prefix: Optional string prefix for the temporary PDB file name.
+
+    Returns:
+        Path: The path to the created temporary PDB file.
+
+    Note:
+        The temporary PDB file will not be deleted automatically. Make sure to manage the temporary files as necessary.
+    """
     pdb_io = PDBIO()
     pdb_io.set_structure(structure)
 
-    with tempfile.NamedTemporaryFile(suffix=".pdb", delete=False) as tmpfile:
+    with tempfile.NamedTemporaryFile(suffix='.pdb', prefix=prefix, delete=False) as tmpfile:
         file_path = Path(tmpfile.name)
-        print(f'Created PDB file: {str(file_path)}')
+        LOGGER.debug(f'Created PDB file: {str(file_path)}')
         pdb_io.save(str(file_path))
 
     return file_path
 
 
 def get_esp_array(
-    params: Dict, output_dir: Union[str, Path] = '.', remove_artefacts: bool = True, return_mol: bool = False
-):
+    structure,
+    rotations: Optional[Tuple[float, float, float]] = None,
+    grid_dim: int = 96,
+    grid_spacing: float = 0.75,
+    shell_width: float = 2.0,
+    output_dir: Union[str, Path] = '.',
+    remove_artefacts: bool = True,
+) -> np.ndarray:
     """
-    Generates an Electrostatic Potential (ESP) array based on the provided parameters and molecular structure.
+    Generates an Electrostatic Potential (ESP) array based on the provided molecular structure.
 
-    Given a molecular structure, this function rotates the molecule, performs electrostatic calculations
-    using the APBSWrapper class, and then creates an ESP array.
+    Given a molecular structure, this function optionally rotates the molecule using the specified angles,
+    performs electrostatic calculations using the APBSWrapper class, and then creates an ESP array.
 
     Args:
-        params: A dictionary containing various parameters required for calculations.
-            Expected keys include INPUT_MOL_KEY, ROT_X_KEY, ROT_Y_KEY, ROT_Z_KEY, GRID_DIM_KEY,
-            GRID_SPACING_KEY, and SHELL_WIDTH_KEY.
+        structure: The molecular structure for which to calculate the ESP.
+        rotations: A tuple containing the angles in degrees to rotate the molecule around the X, Y, and Z axes.
+        grid_dim: The grid dimensions for the electrostatic calculations. Defaults to 96.
+        grid_spacing: The spacing between grid points for the electrostatic calculations. Defaults to 0.75.
+        shell_width: The threshold for the electrostatic shell width. Defaults to 2.0.
         output_dir: The directory where all output files will be saved. Defaults to the current directory.
-        remove_artefacts: Flag to indicate if output files should be removed after calculations.
-        return_mol: Flag to indicate if the rotated molecular structure should also be returned.
+        remove_artefacts: Flag to indicate if output files should be removed after calculations. Defaults to True.
 
     Returns:
-        np.ndarray: An ESP array holding the calculated electrostatic potential.
-        Bio.PDB.Structure.Structure (optional): The rotated molecular structure, if return_mol is set to True.
+        An ESP array holding the calculated electrostatic potential.
 
     Notes:
         1. Make sure to call the 'run' method of APBSWrapper before accessing other functionalities.
-        2. The electrostatic potential is set to zero for points outside the given SHELL_WIDTH_KEY threshold.
+        2. The electrostatic potential is set to zero for points outside the given shell_width threshold.
     """
 
-    structure = euler_rotate(params[INPUT_MOL_KEY], params[ROT_X_KEY], params[ROT_Y_KEY], params[ROT_Z_KEY])
-    structure_path = save_molecule(structure)
+    if rotations:
+        structure = euler_rotate(structure, rotations)
+        structure_name = f'{str(structure.get_id())}_{rotations[0]:06.2f}x{rotations[1]:06.2f}y{rotations[2]:06.2f}z_'
+    else:
+        structure_name = f'{str(structure.get_id())}_'
+    structure_path = save_molecule(structure, prefix=structure_name)
 
     zap = APBSWrapper(
         input_path=structure_path,
         output_dir=output_dir,
         config_file_name=structure_path.with_suffix('.in').name,
-        grid_dim=params[GRID_DIM_KEY],
-        grid_spacing=params[GRID_SPACING_KEY],
+        grid_dim=grid_dim,
+        grid_spacing=grid_spacing,
         inner_dielectric=2.0,
         outer_dielectric=80,
     )
@@ -334,32 +355,29 @@ def get_esp_array(
     for i in range(zap.network['accessibility'].shape[0]):
         for j in range(zap.network['accessibility'].shape[1]):
             for k in range(zap.network['accessibility'].shape[2]):
-                if zap.network['accessibility'][i, j, k] < 1.0 or zap.check_probe(i, k, k, params[SHELL_WIDTH_KEY]):
+                if zap.network['accessibility'][i, j, k] < 1.0 or zap.check_probe(i, j, k, shell_width):
                     esp_array[i, j, k] = zap.network['potential'][i, j, k]
 
     if remove_artefacts:
         zap.remove_artefacts()
 
-    if return_mol:
-        return esp_array, structure
     return esp_array
 
 
 def generate_esp_grids(
     structure_file: Union[str, Path],
-    output_dir: Union[str, Path] = '.',
     config: Union[Dict, SimpleNamespace] = DEFAULT_CONFIG,
-    return_mol: bool = False,
     **kwargs,
-):
-    """Generate ESP grids from a given molecule file (optionally return the molecule object).
+) -> List[np.ndarray]:
+    """Generate ESP grids from a given molecule file.
 
     Args:
         structure_file: The file path or object that contains the molecular structure data.
-        output_dir: The directory where generated grids will be saved. Defaults to the current directory.
         config: Configuration settings for grid generation.
-        return_mol: Flag to indicate whether the molecule object should be returned along with the ESP array.
-        **kwargs: Additional keyword arguments to override `config` settings.
+        rotate_array: If true, rotate ESP numpy array instead of rotating PDB strucutre
+        **kwargs: Additional keyword arguments to override `config` settings or specify args for get_esp_array:
+            remove_artefacts: Whether output files should be removed after calculations. Defaults to True.
+            artefacts_dir: The directory where generated grids will be saved. Defaults to current directory.
 
     Raises:
         ValueError: If any required arguments are missing in the `config`.
@@ -368,113 +386,30 @@ def generate_esp_grids(
         List of ESP arrays or a list of tuples containing ESP arrays and molecule objects, if `return_mol` is True.
     """
 
-    config = get_config(config, kwargs)
-    config_keys = [k for k, v in config]
-    missing_args = [arg for arg in TRANSFORMS_ARGUMENTS if arg not in config_keys]
-    if missing_args:
-        raise ValueError(f"Following arguments are missing: {', '.join(missing_args)}")
+    config = get_config(config, {k: v for k, v in kwargs.items() if k in DEFAULT_CONFIG_KEYS})
 
-    # Assuming get_molecule is available in this scope
+    artefacts_dir = kwargs.get('artefacts_dir', '.')
     structure = get_molecule(structure_file)
+    output_dir = Path(artefacts_dir, str(structure.get_id()))
 
-    shared_params = {
-        INPUT_MOL_KEY: structure,
-        GRID_DIM_KEY: config.grid_dim,
-        GRID_SPACING_KEY: config.grid_spacing,
-        SHELL_WIDTH_KEY: config.shell_width,
-    }
-
-    params_list = [
-        {
-            ROT_X_KEY: random.uniform(0, 180),
-            ROT_Y_KEY: random.uniform(0, 180),
-            ROT_Z_KEY: random.uniform(0, 180),
-            **shared_params,
-        }
-        for _ in range(config.num_augmentations)
+    rotations_list = [
+        (random.uniform(0, 180), random.uniform(0, 180), random.uniform(0, 180)) for _ in range(config.num_augmentations)
     ]
 
     processes = min(multiprocessing.cpu_count() - 1, config.processes)
+    arguments_list = [
+        (
+            structure,
+            rotations,
+            config.grid_dim,
+            config.grid_spacing,
+            config.shell_width,
+            output_dir,
+            config.remove_artefacts,
+        )
+        for rotations in rotations_list
+    ]
     with multiprocessing.Pool(processes=processes) as p:
-        esp_array_output = p.map(partial(get_esp_array, return_mol=return_mol, output_dir=output_dir), params_list)
+        esp_array_output = p.starmap(get_esp_array, arguments_list)
 
-    if return_mol:
-        return [(esp_array.reshape((1, *esp_array.shape)), mol) for esp_array, mol in esp_array_output]
     return esp_array_output
-
-
-def find_stratification_bins(y: ArrayLike, max_bins_stratify: int = 5, min_samples_per_bin: int = 2):
-    """
-    Attempt to find a suitable number of bins to stratify the data into.
-
-    Args:
-        y: The array of labels to stratify by.
-        max_bins_stratify: The maximum number of bins to try for stratification.
-        min_samples_per_bin: Minimum number of samples required per bin.
-
-    Returns:
-        pandas.Series with the same length as `y` indicating the bin each sample belongs to, or
-        None if no suitable stratification is possible.
-    """
-    for n_bins in range(max_bins_stratify, 1, -1):
-        stratify = pd.Series(pd.qcut(y, q=n_bins, labels=False))
-        if all(stratify.value_counts() >= min_samples_per_bin):
-            return stratify
-    return None
-
-
-def split_indices(
-    y: ArrayLike, val_size: float = 0.1, max_bins_stratify: Optional[int] = None
-) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Split the dataset into training and validation sets.
-
-    Args:
-        y: The array of labels.
-        val_size: The proportion of the dataset to include in the test split.
-        max_bins_stratify: Maximum number of bins to use for stratification.
-
-    Returns:
-        Indices for training set.
-        Indices for validation set.
-    """
-
-    if len(y) == 0:
-        raise ValueError("Input array 'y' cannot be empty.")
-
-    if val_size <= 0.0 or val_size >= 1.0:
-        raise ValueError('val_size should be in the range [0.0, 1.0].')
-
-    n_samples = len(y)
-    indices = np.arange(n_samples)
-
-    stratify = None
-    # Attempt to find stratification bins
-    if max_bins_stratify is not None:
-        stratify = find_stratification_bins(y, max_bins_stratify=max_bins_stratify)
-
-    train_index, val_index = [], []
-
-    if stratify is not None:
-        # Check that each stratification bin has enough samples
-        bin_counts = np.bincount(stratify)
-        min_bin_count = np.min(bin_counts)
-        if min_bin_count < 2:
-            raise ValueError('Each stratification bin must have at least 2 samples.')
-
-        # Stratified sampling
-        for bin in np.unique(stratify):
-            bin_indices = indices[stratify == bin]
-            n_train = round((1 - val_size) * len(bin_indices))
-            train_indices_bin = np.random.choice(bin_indices, n_train, replace=False)
-            val_indices_bin = list(set(bin_indices) - set(train_indices_bin))
-
-            train_index.extend(train_indices_bin)
-            val_index.extend(val_indices_bin)
-    else:
-        # Random sampling without stratification
-        n_train = round((1 - val_size) * n_samples)
-        train_index = np.random.choice(indices, n_train, replace=False)
-        val_index = list(set(indices) - set(train_index))
-
-    return np.array(train_index), np.array(val_index)

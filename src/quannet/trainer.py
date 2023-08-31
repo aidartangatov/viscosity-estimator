@@ -54,6 +54,8 @@ class QuanTrainer:
             target_csv_col=self.args.target_csv_col,
             min_structures=1,
         )
+
+        LOGGER.info('Started generating model input')
         train_loader, val_loader = build_input(
             self.dataset['paths'],
             self.dataset['targets'],
@@ -61,6 +63,7 @@ class QuanTrainer:
             train_val_split=True,
             args=self.args,
         )
+        LOGGER.info('Finished generating model input')
 
         self.train_loader = train_loader
         self.val_loader = val_loader
@@ -107,3 +110,23 @@ class QuanTrainer:
         if weights:
             model.load(weights, verbose=verbose)
         return model
+
+    # def save_model(self):
+    #     """Save model checkpoints based on various conditions."""
+    #     ckpt = {
+    #         'epoch': self.epoch,
+    #         'best_fitness': self.best_fitness,
+    #         'model': deepcopy(de_parallel(self.model)).half(),
+    #         'updates': self.ema.updates,
+    #         'optimizer': self.optimizer.state_dict(),
+    #         'train_args': vars(self.args),  # save as dict
+    #         'date': datetime.now().isoformat(),
+    #         'version': __version__}
+    #
+    #     # Save last, best and delete
+    #     torch.save(ckpt, self.last)
+    #     if self.best_fitness == self.fitness:
+    #         torch.save(ckpt, self.best)
+    #     if (self.epoch > 0) and (self.save_period > 0) and (self.epoch % self.save_period == 0):
+    #         torch.save(ckpt, self.wdir / f'epoch{self.epoch}.pt')
+    #     del ckpt

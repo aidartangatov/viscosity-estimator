@@ -9,6 +9,8 @@ grid_spacing: 0.75  # (float) spacing between grid points in Angstroms
 shell_width: 2.0  # (float) thickness of the surface shell in Angstroms
 num_augmentations: 5  # (int) augmentation level
 
+remove_artefacts: True
+
 lr: 0.001
 deterministic: True
 processes: 4

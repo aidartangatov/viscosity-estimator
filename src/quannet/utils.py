@@ -7,7 +7,6 @@ from collections import Counter
 
 import yaml
 import pandas as pd
-import numpy as np
 
 FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]
@@ -15,7 +14,6 @@ ROOT = FILE.parents[0]
 TEST_STRUCTURES = ROOT / 'structures'
 DEFAULT_CONFIG_PATH = ROOT / 'config/default.yaml'
 LOGGING_NAME = 'quannet'
-ArrayLike = Union[list, pd.Series, np.ndarray]
 
 
 def search_file(file: str, dir: Union[str, Path] = 'config') -> str:

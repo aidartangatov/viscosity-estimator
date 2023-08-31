@@ -2,12 +2,16 @@ from types import SimpleNamespace
 from typing import List, Tuple, Union, Optional
 from pathlib import Path
 
+from tqdm import tqdm
+import pandas as pd
 import numpy as np
 import torch
 from torch.utils.data import Dataset, Sampler, DataLoader
 
-from quannet.utils import DEFAULT_CONFIG
-from quannet.prepare import split_indices, generate_esp_grids
+from quannet.utils import LOGGER, DEFAULT_CONFIG
+from quannet.prepare import generate_esp_grids
+
+ArrayLike = Union[list, pd.Series, np.ndarray]
 
 
 class QuanDataset(Dataset):
@@ -36,17 +40,18 @@ class QuanDataset(Dataset):
         data = np.zeros((sample_size, self.args.grid_dim, self.args.grid_dim, self.args.grid_dim))
 
         counter = 0
-        for structure_path in structure_paths:
+        for structure_path in tqdm(structure_paths):
             structure_path = Path(structure_path)
 
             esp_grids = generate_esp_grids(
                 str(structure_path),
-                output_dir=self.artefacts_dir,
+                artefacts_dir=self.artefacts_dir,
                 grid_dim=self.args.grid_dim,
                 grid_spacing=self.args.grid_spacing,
                 shell_width=self.args.shell_width,
                 num_augmentations=self.args.num_augmentations,
                 processes=self.args.processes,
+                remove_artefacts=self.args.remove_artefacts,
             )
             for grid in esp_grids:
                 data[counter] = grid
@@ -95,6 +100,83 @@ class QuanSampler(Sampler):
         return shuffled_indices
 
 
+def find_stratification_bins(y: ArrayLike, max_bins_stratify: int = 5, min_samples_per_bin: int = 2):
+    """
+    Attempt to find a suitable number of bins to stratify the data into.
+
+    Args:
+        y: The array of labels to stratify by.
+        max_bins_stratify: The maximum number of bins to try for stratification.
+        min_samples_per_bin: Minimum number of samples required per bin.
+
+    Returns:
+        pandas.Series with the same length as `y` indicating the bin each sample belongs to, or
+        None if no suitable stratification is possible.
+    """
+    for n_bins in range(max_bins_stratify, 1, -1):
+        stratify = pd.Series(pd.qcut(y, q=n_bins, labels=False))
+        if all(stratify.value_counts() >= min_samples_per_bin):
+            return stratify
+    return None
+
+
+def split_indices(
+    y: ArrayLike, val_size: float = 0.1, max_bins_stratify: Optional[int] = None
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Split the dataset into training and validation sets.
+
+    Args:
+        y: The array of labels.
+        val_size: The proportion of the dataset to include in the test split.
+        max_bins_stratify: Maximum number of bins to use for stratification.
+
+    Returns:
+        Indices for training set.
+        Indices for validation set.
+    """
+
+    if len(y) == 0:
+        raise ValueError("Input array 'y' cannot be empty.")
+
+    if val_size <= 0.0 or val_size >= 1.0:
+        raise ValueError('val_size should be in the range [0.0, 1.0].')
+
+    n_samples = len(y)
+    indices = np.arange(n_samples)
+
+    stratify = None
+    # Attempt to find stratification bins
+    if max_bins_stratify is not None:
+        stratify = find_stratification_bins(y, max_bins_stratify=max_bins_stratify)
+
+    train_index, val_index = [], []
+
+    if stratify is not None:
+        # Check that each stratification bin has enough samples
+        bin_counts = np.bincount(stratify)
+        min_bin_count = np.min(bin_counts)
+        if min_bin_count < 2:
+            raise ValueError('Each stratification bin must have at least 2 samples.')
+
+        # Stratified sampling
+        for bin in np.unique(stratify):
+            bin_indices = indices[stratify == bin]
+            n_train = round((1 - val_size) * len(bin_indices))
+            train_indices_bin = np.random.choice(bin_indices, n_train, replace=False)
+            val_indices_bin = list(set(bin_indices) - set(train_indices_bin))
+
+            train_index.extend(train_indices_bin)
+            val_index.extend(val_indices_bin)
+    else:
+        # Random sampling without stratification
+        n_train = round((1 - val_size) * n_samples)
+        train_index = np.random.choice(indices, n_train, replace=False)
+        val_index = list(set(indices) - set(train_index))
+
+    return np.array(train_index), np.array(val_index)
+
+
 def build_input(
     structure_paths: List[Union[str, Path]],
     target: List[float],
@@ -125,12 +207,15 @@ def build_input(
     if train_val_split:
         train_index, val_index = split_indices(target, val_size=args.val_size, max_bins_stratify=args.max_bins_stratify)
 
+        LOGGER.info(f'Preparing {len(train_index)} training input files ...')
         train_dataset = QuanDataset(
             structure_paths=[structure_paths[i] for i in train_index],
             target=[target[i] for i in train_index],
             artefacts_dir=artefacts_dir,
             args=args,
         )
+
+        LOGGER.info(f'Preparing {len(val_index)} validation input files ...')
         val_dataset = QuanDataset(
             structure_paths=[structure_paths[i] for i in val_index],
             target=[target[i] for i in val_index],

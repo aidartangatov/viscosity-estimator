@@ -1,38 +1,40 @@
-# Default training settings and hyperparameters
-mode: train  # (str) QuanNet mode, i.e. train, val, predict
-dataset:  # (str) dataset dir
+# General Settings
+mode: train  # Mode for QuanNet (e.g., 'train', 'predict')
+dataset:  # Path to the dataset directory
 
-# Train settings -------------------------------------------------------------------------------------------------------
-model:  # (str, optional) path to model file, i.e. quannet.pt
-grid_dim: 96  # (int) number of grid points along all 3 axes
-grid_spacing: 0.75  # (float) spacing between grid points in Angstroms
-shell_width: 2.0  # (float) thickness of the surface shell in Angstroms
-num_augmentations: 5  # (int) augmentation level
+# Optional Experiment Details
+project: # Project name (optional)
+name:  # Experiment name (optional, results saved in 'project/name' directory)
+model:  # Path to pre-trained model file (optional, e.g., 'quannet.pt')
 
-remove_artefacts: True
-precomputed_input: False
+# Training Settings
+grid_dim: 96  # Number of grid points along each axis
+grid_spacing: 0.75  # Spacing between grid points (in Angstroms)
+shell_width: 2.0  # Thickness of surface shell (in Angstroms)
+num_augmentations: 5  # Number of data augmentations
+remove_artefacts: true  # Flag to remove artefacts
+precomputed_input: false  # Flag to use precomputed inputs
+lr: 0.001  # Learning rate
+deterministic: true  # Flag for deterministic training
+processes: 4  # Number of processes
+val_size: 0.2  # Fraction of data for validation
+max_bins_stratify: 5  # Max number of bins for stratified train-val split
+batch_size: 4  # Batch size
+max_epochs: 3  # Maximum number of epochs
 
-lr: 0.001
-deterministic: True
-processes: 4
-val_size: 0.2
-max_bins_stratify: 5  # Maximum number of bins to use for stratified train-val split
-batch_size: 4
-max_epochs: 3
-project:  # (str, optional) project name
-name:  # (str, optional) experiment name, results saved to 'project/name' directory
-accelerator: auto  # (str) "cpu", "gpu", etc., refer to lightning.pytorch.Trainer
-devices: auto  # (str | int | list[int]) the devices to use, refer to lightning.pytorch.Trainer
-every_n_train_steps:  # (int, optional) number of training steps between checkpoints,
-                      # refer to lightning.pytorch.callbacks.ModelCheckpoint
-path_csv_col: path
-target_csv_col: target
+# Checkpoint and Device Settings
+resume: false  # Flag to resume training from last checkpoint
+exist_ok: false  # Flag to overwrite existing experiment
+accelerator: auto  # Accelerator type ('cpu', 'gpu', etc.), used in Lightning's Trainer
+devices: auto  # Devices to use (str | int | list[int]), used in Lightning's Trainer
+every_n_train_steps:  # Steps between checkpoints (optional), used in Lightning's ModelCheckpoint
 
-resume: False  # (bool) resume training from last checkpoint
-exist_ok: False  # (bool) whether to overwrite existing experiment
+# Data Column Names
+path_csv_col: path  # Column name for paths in CSV
+target_csv_col: target  # Column name for targets in CSV
 
-# Prediction settings --------------------------------------------------------------------------------------------------
-source:  # (str) source directory for PDB structures
+# Prediction Settings
+source:  # Source directory for PDB structures
 
-# Custom config.yaml ---------------------------------------------------------------------------------------------------
-config:  # (str, optional) for overriding default.yaml
+# Custom config.yml
+config:  # Path to custom config file for overriding this one (optional)

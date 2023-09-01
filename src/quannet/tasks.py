@@ -6,7 +6,7 @@ from datetime import datetime
 import torch
 import torch.nn.functional as F
 from torch import nn, optim
-import lightning.pytorch as pl
+import lightning as L
 
 from quannet import __version__
 from quannet.utils import LOGGER, DEFAULT_CONFIG, DEFAULT_CONFIG_DICT, DEFAULT_CONFIG_KEYS, IterableNamespace
@@ -15,7 +15,9 @@ from quannet.config import get_config
 
 class QuanModel(nn.Module):
     """
-    Base class for all models
+    Base class for QuanNet models
+
+    Provides basic functionality for initializing and loading pre-trained QuanNet models.
     """
 
     def __init__(self, config=DEFAULT_CONFIG, overrides=None):
@@ -56,7 +58,13 @@ class QuanModel(nn.Module):
             )
 
 
-class LitModel(pl.LightningModule):
+class LitModel(L.LightningModule):
+    """
+    Lightning module wrapper for QuanNet models.
+
+    This class defines the training, validation, and prediction procedures for QuanNet models.
+    """
+
     def __init__(self, model: torch.nn.Module, args: IterableNamespace):
         super().__init__()
         self.model = model

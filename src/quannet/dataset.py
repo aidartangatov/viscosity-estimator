@@ -33,7 +33,9 @@ class QuanDataset(Dataset):
     def _prepare_dataset(self):
         self.structures = torch.FloatTensor(self.transforms(self.structure_paths))
         self.target = (
-            torch.FloatTensor(self.target).view(-1, 1) if self.target is not None else torch.zeros(len(self.target), 1)
+            torch.FloatTensor(self.target).view(-1, 1)
+            if self.target is not None
+            else torch.zeros(len(self.structure_paths), 1)
         )
         self.structure_ids = np.arange(len(self.target))
 

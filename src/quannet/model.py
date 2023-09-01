@@ -1,5 +1,9 @@
-from typing import Union, Optional
+from types import SimpleNamespace
+from typing import Any, Dict, Union, Optional
 from pathlib import Path
+
+import pandas as pd
+import torch.nn
 
 from quannet.tasks import load_model_from_checkpoint
 from quannet.utils import LOGGER, TEST_STRUCTURES, load_yaml, search_file
@@ -8,7 +12,11 @@ from quannet.predictor import QuanPredictor
 
 
 class Model:
-    def __init__(self, model_path: Optional[Union[str, Path]] = None) -> None:
+    """
+    Class for handling training and prediction of QuanNet models.
+    """
+
+    def __init__(self, model_path: Optional[Union[str, Path]] = None):
         self.predictor = None
         self.model = None
         self.trainer = None
@@ -24,21 +32,31 @@ class Model:
             model_path = search_file(model_path, dir='models')
             self._load_model(model_path)
 
-    def _load_model(self, weights: Union[str, Path]):
+    def _load_model(self, weights: Union[str, Path]) -> None:
+        """Load a pre-trained model from a checkpoint."""
         self.model, self.ckpt = load_model_from_checkpoint(weights)
         self.ckpt_path = self.model.pt_path
         self.overrides = self.model.args = self._reset_ckpt_args(self.model.args)
 
-    def _build_model(self, model=None):
+    def _build_model(self, model: Optional[torch.nn.Module] = None) -> None:
+        """Build a new model."""
         if model is None:
             model = self.model_map['model']
         overrides = self.overrides.copy()
         self.model = model(overrides=overrides)
 
-    def __call__(self, structures=None, **kwargs):
+    def __call__(self, structures: Optional[Union[str, Path]] = None, **kwargs):
+        """Make predictions on structures."""
         return self.predict(structures, **kwargs)
 
-    def predict(self, structures=None, **kwargs):
+    def predict(self, structures: Optional[Union[str, Path]] = None, **kwargs) -> pd.Series:
+        """
+        Make predictions on given structures.
+
+        Args:
+            structures: Path to directory with .pdb structures to predict on.
+            **kwargs: Additional keyword arguments.
+        """
         if structures is None:
             structures = TEST_STRUCTURES
             LOGGER.warning(f"'structures' is missing, using 'structures={structures}'.")
@@ -48,9 +66,15 @@ class Model:
         self.predictor = QuanPredictor(overrides=overrides)
         self.predictor.model = self.predictor.get_model(model=self.model, weights=self.model if self.ckpt else None)
         self.model = self.predictor.model
-        self.predictor.predict(structures)
+        return self.predictor.predict(structures)
 
-    def train(self, **kwargs):
+    def train(self, **kwargs) -> None:
+        """
+        Train a model with provided or overridden parameters.
+
+        Args:
+            **kwargs: Additional keyword arguments including training settings.
+        """
         overrides = self.overrides.copy()
         if kwargs.get('config'):
             LOGGER.info(f"overrides file passed. Overriding default params with {kwargs['overrides']}.")
@@ -70,7 +94,7 @@ class Model:
         self.overrides = self.model.args
 
     @staticmethod
-    def _reset_ckpt_args(args):
+    def _reset_ckpt_args(args: Union[Dict, SimpleNamespace]) -> Dict[str, Any]:
         """Reset arguments when loading a PyTorch model."""
         include = {'grid_dim', 'grid_spacing', 'shell_width', 'num_augmentations'}
         return {k: v for k, v in args.items() if k in include}

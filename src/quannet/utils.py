@@ -9,45 +9,9 @@ import yaml
 import pandas as pd
 
 FILE = Path(__file__).resolve()
-ROOT = FILE.parents[2]
-# TODO: set right path, better do in settings
-TEST_STRUCTURES = ROOT / 'datasets/quannet_test/structures'
-QUANNET_MODEL = ROOT / 'models/quannet.pt'
-DEFAULT_CONFIG_PATH = ROOT / 'src/quannet/config/default.yaml'
+PACKAGE_ROOT = FILE.parents[0]
+DEFAULT_CONFIG_PATH = PACKAGE_ROOT / 'config/default.yaml'
 LOGGING_NAME = 'quannet'
-
-
-def search_file(file: str, dir: Union[str, Path] = 'config') -> str:
-    """
-    Search the file (if necessary) by name or pattern and return its path.
-
-    Args:
-        file: The name, glob pattern, or path of the file.
-        dir: The name or path of directory for recursive search
-
-    Returns:
-        The file path if it exists.
-    """
-    file_path = Path(file).resolve()
-
-    if file_path.exists():
-        return str(file_path)
-
-    # Search for the file recursively within the dir directory under ROOT
-    if isinstance(dir, str):
-        matching_files = list(ROOT.joinpath(dir).rglob(file))
-    # Search for the file recursively within the dir path
-    elif isinstance(dir, Path):
-        matching_files = list(dir.rglob(file))
-    else:
-        raise ValueError(f"'dir' is expected to be a str or pathlib.Path object, got {type(dir)}")
-
-    if not matching_files:
-        raise FileNotFoundError(f"'{file}' does not exist")
-    elif len(matching_files) > 1:
-        raise FileNotFoundError(f"Multiple files match '{file}', specify exact path: {matching_files}")
-
-    return str(matching_files[0])
 
 
 class SettingsManager(dict):
@@ -66,7 +30,11 @@ class SettingsManager(dict):
         self.defaults = {
             'runs_dir': str(root / 'runs'),
             'datasets_dir': str(root / 'datasets'),
+            'models_dir': str(root / 'models'),
+            'test_dataset_dir': str(root / 'datasets' / 'quannet_test'),
             'artefacts_dir_name': 'artefacts',
+            'logs_dir_name': 'logs',
+            'structures_dir_name': 'structures',
         }
 
         super().__init__(copy.deepcopy(self.defaults))
@@ -74,6 +42,42 @@ class SettingsManager(dict):
 
 SETTINGS = SettingsManager()
 DATASETS_DIR = Path(SETTINGS['datasets_dir'])
+MODELS_DIR = Path(SETTINGS['models_dir'])
+TEST_STRUCTURES = Path(SETTINGS['test_dataset_dir'], SETTINGS['structures_dir_name'])
+QUANNET_MODEL = MODELS_DIR / 'quannet.pt'
+
+
+def search_file(file: str, dir: Union[str, Path] = 'config') -> str:
+    """
+    Search the file (if necessary) by name or pattern and return its path.
+
+    Args:
+        file: The name, glob pattern, or path of the file.
+        dir: The name or path of directory for recursive search
+
+    Returns:
+        The file path if it exists.
+    """
+    file_path = Path(file).resolve()
+
+    if file_path.exists():
+        return str(file_path)
+
+    # Search for the file recursively within the dir directory under PACKAGE_ROOT
+    if isinstance(dir, str):
+        matching_files = list(PACKAGE_ROOT.joinpath(dir).rglob(file))
+    # Search for the file recursively within the dir path
+    elif isinstance(dir, Path):
+        matching_files = list(dir.rglob(file))
+    else:
+        raise ValueError(f"'dir' is expected to be a str or pathlib.Path object, got {type(dir)}")
+
+    if not matching_files:
+        raise FileNotFoundError(f"'{file}' does not exist")
+    elif len(matching_files) > 1:
+        raise FileNotFoundError(f"Multiple files match '{file}', specify exact path: {matching_files}")
+
+    return str(matching_files[0])
 
 
 class InsufficientDataError(Exception):

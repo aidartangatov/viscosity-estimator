@@ -15,7 +15,7 @@ from pre-compiled binaries
 4. Install quannet Python package:
 
 ```commandline
-pip install -e .
+pip install .
 ```
 
 ## Usage:

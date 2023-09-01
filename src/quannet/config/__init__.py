@@ -267,12 +267,15 @@ def entrypoint(debug=''):
         if 'model' not in overrides:
             overrides['model'] = QUANNET_MODEL
             LOGGER.warning(f"'model' is missing. Using default 'model={overrides['model']}'.")
+
     elif mode in ('train', 'val') and 'dataset' not in overrides:
         LOGGER.exception(f"'target' is missing.\n{CLI_HELP_MESSAGE}")
         return
+
     from quannet import QuanNet
 
-    model = QuanNet(overrides['model'])
+    model = overrides.pop('model', DEFAULT_CONFIG.model)
+    model = QuanNet(model)
 
     getattr(model, mode)(**overrides)
 

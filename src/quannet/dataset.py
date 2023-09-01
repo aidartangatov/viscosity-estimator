@@ -190,8 +190,8 @@ def split_indices(
 
 def build_input(
     structure_paths: List[Union[str, Path]],
-    target: List[float],
-    artefacts_dir: Union[str, Path],
+    target: Optional[List[float]] = None,
+    artefacts_dir: Union[str, Path] = '.',
     precomputed: bool = False,
     train_val_split: bool = False,
     args: Optional[SimpleNamespace] = None,
@@ -202,7 +202,7 @@ def build_input(
 
     Args:
         structure_paths: List of paths to the structures.
-        target: Target values.
+        target: Target values. Required when train_val_split = True.
         artefacts_dir: path to feature generation artefacts directory.
         precomputed: If True, load precomputed input array from files,
         train_val_split: Whether to split the data into training and validation sets.
@@ -218,6 +218,9 @@ def build_input(
 
     # If train-val split is required
     if train_val_split:
+        if not target:
+            raise ValueError("Non-empty 'target' required in train_val_split mode")
+
         train_index, val_index = split_indices(target, val_size=args.val_size, max_bins_stratify=args.max_bins_stratify)
 
         LOGGER.info(f'Preparing {len(train_index)} training input files ...')

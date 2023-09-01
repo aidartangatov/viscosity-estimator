@@ -8,6 +8,7 @@ from pathlib import Path
 
 from quannet.utils import (
     LOGGER,
+    QUANNET_MODEL,
     DEFAULT_CONFIG,
     TEST_STRUCTURES,
     DEFAULT_CONFIG_DICT,
@@ -258,21 +259,20 @@ def entrypoint(debug=''):
     elif mode not in MODES:
         raise ValueError(f"Invalid 'mode={mode}'. Valid modes are {MODES}.\n{CLI_HELP_MESSAGE}")
 
-    # Model
-    model = overrides.pop('model', DEFAULT_CONFIG.model)
-    overrides['model'] = model
-    from quannet import QuanNet
-
-    model = QuanNet(model)
-
-    # Mode
-    if mode == 'predict' and 'structures' not in overrides:
-        overrides['structures'] = DEFAULT_CONFIG.structures or TEST_STRUCTURES
-        LOGGER.warning(f"'structures' is missing. Using default 'structures={overrides['structures']}'.")
-
+    # Mode and Model
+    if mode == 'predict':
+        if 'structures' not in overrides:
+            overrides['structures'] = DEFAULT_CONFIG.structures or TEST_STRUCTURES
+            LOGGER.warning(f"'structures' is missing. Using default 'structures={overrides['structures']}'.")
+        if 'model' not in overrides:
+            overrides['model'] = QUANNET_MODEL
+            LOGGER.warning(f"'model' is missing. Using default 'model={overrides['model']}'.")
     elif mode in ('train', 'val') and 'dataset' not in overrides:
         LOGGER.exception(f"'target' is missing.\n{CLI_HELP_MESSAGE}")
         return
+    from quannet import QuanNet
+
+    model = QuanNet(overrides['model'])
 
     getattr(model, mode)(**overrides)
 

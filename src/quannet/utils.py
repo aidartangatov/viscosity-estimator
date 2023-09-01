@@ -9,10 +9,11 @@ import yaml
 import pandas as pd
 
 FILE = Path(__file__).resolve()
-ROOT = FILE.parents[0]
+ROOT = FILE.parents[2]
 # TODO: set right path, better do in settings
-TEST_STRUCTURES = ROOT / 'structures'
-DEFAULT_CONFIG_PATH = ROOT / 'config/default.yaml'
+TEST_STRUCTURES = ROOT / 'datasets/quannet_test/structures'
+QUANNET_MODEL = ROOT / 'models/quannet.pt'
+DEFAULT_CONFIG_PATH = ROOT / 'src/quannet/config/default.yaml'
 LOGGING_NAME = 'quannet'
 
 
@@ -65,7 +66,7 @@ class SettingsManager(dict):
         self.defaults = {
             'runs_dir': str(root / 'runs'),
             'datasets_dir': str(root / 'datasets'),
-            'arefacts_dir_name': 'artefacts',
+            'artefacts_dir_name': 'artefacts',
         }
 
         super().__init__(copy.deepcopy(self.defaults))

@@ -5,7 +5,6 @@ dataset:  # Path to the dataset directory
 # Optional Experiment Details
 project: # Project name (optional)
 name:  # Experiment name (optional, results saved in 'project/name' directory)
-model:  # Path to pre-trained model file (optional, e.g., 'quannet.pt')
 
 # Training Settings
 grid_dim: 96  # Number of grid points along each axis
@@ -34,7 +33,8 @@ path_csv_col: path  # Column name for paths in CSV
 target_csv_col: target  # Column name for targets in CSV
 
 # Prediction Settings
-source:  # Source directory for PDB structures
+structures:  # Source directory for PDB structures
+model:  # Path to pre-trained model file (e.g., 'quannet.pt')
 
 # Custom config.yml
 config:  # Path to custom config file for overriding this one (optional)

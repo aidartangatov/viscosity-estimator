@@ -2,8 +2,9 @@ from typing import Union, Optional
 from pathlib import Path
 
 from quannet.tasks import load_model_from_checkpoint
-from quannet.utils import LOGGER, load_yaml, search_file
+from quannet.utils import LOGGER, TEST_STRUCTURES, load_yaml, search_file
 from quannet.trainer import QuanTrainer
+from quannet.predictor import QuanPredictor
 
 
 class Model:
@@ -11,6 +12,7 @@ class Model:
         self.predictor = None
         self.model = None
         self.trainer = None
+        self.predictor = None
         self.ckpt = None
         self.ckpt_path = None
         self.overrides = {}
@@ -36,8 +38,17 @@ class Model:
     def __call__(self, structures=None, **kwargs):
         return self.predict(structures, **kwargs)
 
-    def predict(self, structures, **kwargs):
-        pass
+    def predict(self, structures=None, **kwargs):
+        if structures is None:
+            structures = TEST_STRUCTURES
+            LOGGER.warning(f"'structures' is missing, using 'structures={structures}'.")
+        overrides = self.overrides.copy()
+        overrides.update(kwargs)
+        overrides['mode'] = kwargs.get('mode', 'predict')
+        self.predictor = QuanPredictor(overrides=overrides)
+        self.predictor.model = self.predictor.get_model(model=self.model, weights=self.model if self.ckpt else None)
+        self.model = self.predictor.model
+        self.predictor.predict(structures)
 
     def train(self, **kwargs):
         overrides = self.overrides.copy()

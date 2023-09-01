@@ -25,7 +25,7 @@ class QuanTrainer:
             self.save_dir = Path(project) / name
         else:
             self.save_dir = Path(increment_path(Path(project) / name, exist_ok=self.args.exist_ok))
-        self.artefacts_dir = self.save_dir / SETTINGS['arefacts_dir_name']
+        self.artefacts_dir = self.save_dir / SETTINGS['artefacts_dir_name']
         self._set_pl_trainer()
 
     def _set_pl_trainer(self):

@@ -48,11 +48,11 @@ class QuanModel(nn.Module):
         checkpoint_state_dict = model.float().state_dict()
         # Check for intersection between parameters of the checkpoint and the current model,
         # and ensures the shapes of the weights match.
-        checkpoint_state_dict = self.intersect_dicts(checkpoint_state_dict, self.state_dict())
+        checkpoint_state_dict = self._intersect_dicts(checkpoint_state_dict, self.state_dict())
         self.load_state_dict(checkpoint_state_dict, strict=False)
         if verbose:
             LOGGER.info(
-                f'Transferred {len(checkpoint_state_dict)}/{len(self.model.state_dict())} items from pretrained weights'
+                f'Transferred {len(checkpoint_state_dict)}/{len(model.state_dict())} items from pretrained weights'
             )
 
 

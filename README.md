@@ -22,5 +22,10 @@ pip install -e .
 
 ### Train:
 ```commandline
-quannet mode=train data=quannet_mini
+quannet mode=train data=quannet_test
+```
+
+### Predict:
+```commandline
+quannet mode=predict model=models/quannet.pt structures=datasets/quannet_test/structures
 ```

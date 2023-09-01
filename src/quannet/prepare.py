@@ -360,6 +360,9 @@ def get_esp_array(
 
     if remove_artefacts:
         zap.remove_artefacts()
+    else:
+        np_file_path = Path(output_dir, structure_name[:-1]).with_suffix('.npy')
+        np.save(np_file_path, esp_array)
 
     return esp_array
 
@@ -374,7 +377,6 @@ def generate_esp_grids(
     Args:
         structure_file: The file path or object that contains the molecular structure data.
         config: Configuration settings for grid generation.
-        rotate_array: If true, rotate ESP numpy array instead of rotating PDB strucutre
         **kwargs: Additional keyword arguments to override `config` settings or specify args for get_esp_array:
             remove_artefacts: Whether output files should be removed after calculations. Defaults to True.
             artefacts_dir: The directory where generated grids will be saved. Defaults to current directory.
@@ -413,3 +415,27 @@ def generate_esp_grids(
         esp_array_output = p.starmap(get_esp_array, arguments_list)
 
     return esp_array_output
+
+
+def load_esp_grids(artefacts_dir: Union[str, Path]) -> List[np.ndarray]:
+    """
+    Load Electrostatic Potential (ESP) grids from .npy files located in a specified directory.
+
+    Parameters:
+    - structure_file: Name of the structure file (minus the extension).
+    - artefacts_dir: The directory where .npy files containing the ESP grids are stored.
+
+    Returns:
+    - A list of NumPy arrays, each representing an ESP grid.
+    """
+
+    artefacts_path = Path(artefacts_dir)
+    esp_arrays_paths = list(artefacts_path.glob('*.npy'))
+
+    if not esp_arrays_paths:
+        LOGGER.warning('No matching ESP array files found!')
+        return []
+
+    esp_grids = [np.load(p) for p in esp_arrays_paths]
+
+    return esp_grids

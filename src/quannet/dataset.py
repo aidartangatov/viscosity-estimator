@@ -8,8 +8,8 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, Sampler, DataLoader
 
-from quannet.utils import LOGGER, DEFAULT_CONFIG
-from quannet.prepare import generate_esp_grids
+from quannet.utils import LOGGER, DEFAULT_CONFIG, InsufficientDataError
+from quannet.prepare import load_esp_grids, generate_esp_grids
 
 ArrayLike = Union[list, pd.Series, np.ndarray]
 
@@ -19,11 +19,13 @@ class QuanDataset(Dataset):
         self,
         structure_paths: List[Union[str, Path]],
         artefacts_dir: Union[str, Path],
+        precomputed: bool = True,
         target: Optional[List[float]] = None,
         args: SimpleNamespace = DEFAULT_CONFIG,
     ):
         self.structure_paths = structure_paths
         self.target = target
+        self.precomputed = precomputed
         self.artefacts_dir = artefacts_dir
         self.args = args
         self._prepare_dataset()
@@ -43,16 +45,25 @@ class QuanDataset(Dataset):
         for structure_path in tqdm(structure_paths):
             structure_path = Path(structure_path)
 
-            esp_grids = generate_esp_grids(
-                str(structure_path),
-                artefacts_dir=self.artefacts_dir,
-                grid_dim=self.args.grid_dim,
-                grid_spacing=self.args.grid_spacing,
-                shell_width=self.args.shell_width,
-                num_augmentations=self.args.num_augmentations,
-                processes=self.args.processes,
-                remove_artefacts=self.args.remove_artefacts,
-            )
+            if self.precomputed:
+                structure_name = structure_path.with_suffix('').name
+                esp_grids = load_esp_grids(artefacts_dir=Path(self.artefacts_dir, structure_name))
+                size = len(esp_grids)
+                if size < self.args.num_augmentations:
+                    raise InsufficientDataError(
+                        f'Only {size} ESP arrays were found, while {self.args.num_augmentations} expected.'
+                    )
+            else:
+                esp_grids = generate_esp_grids(
+                    str(structure_path),
+                    artefacts_dir=self.artefacts_dir,
+                    grid_dim=self.args.grid_dim,
+                    grid_spacing=self.args.grid_spacing,
+                    shell_width=self.args.shell_width,
+                    num_augmentations=self.args.num_augmentations,
+                    processes=self.args.processes,
+                    remove_artefacts=self.args.remove_artefacts,
+                )
             for grid in esp_grids:
                 data[counter] = grid
                 counter += 1
@@ -181,6 +192,7 @@ def build_input(
     structure_paths: List[Union[str, Path]],
     target: List[float],
     artefacts_dir: Union[str, Path],
+    precomputed: bool = False,
     train_val_split: bool = False,
     args: Optional[SimpleNamespace] = None,
 ) -> Union[DataLoader, Tuple[DataLoader, DataLoader]]:
@@ -192,6 +204,7 @@ def build_input(
         structure_paths: List of paths to the structures.
         target: Target values.
         artefacts_dir: path to feature generation artefacts directory.
+        precomputed: If True, load precomputed input array from files,
         train_val_split: Whether to split the data into training and validation sets.
         args: Arguments for the QuanDataset and DataLoader.
 
@@ -212,6 +225,7 @@ def build_input(
             structure_paths=[structure_paths[i] for i in train_index],
             target=[target[i] for i in train_index],
             artefacts_dir=artefacts_dir,
+            precomputed=precomputed,
             args=args,
         )
 
@@ -220,19 +234,30 @@ def build_input(
             structure_paths=[structure_paths[i] for i in val_index],
             target=[target[i] for i in val_index],
             artefacts_dir=artefacts_dir,
+            precomputed=precomputed,
             args=args,
         )
 
         train_sampler = QuanSampler(train_dataset.structure_ids, batch_size=args.batch_size)
 
-        train_loader = DataLoader(train_dataset, batch_size=args.batch_size, sampler=train_sampler, shuffle=False)
-        val_loader = DataLoader(val_dataset, batch_size=args.batch_size, sampler=None, shuffle=False)
+        train_loader = DataLoader(
+            train_dataset, batch_size=args.batch_size, sampler=train_sampler, shuffle=False, num_workers=args.processes
+        )
+        val_loader = DataLoader(
+            val_dataset, batch_size=args.batch_size, sampler=None, shuffle=False, num_workers=args.processes
+        )
 
         return train_loader, val_loader
 
     # If only one dataset is required (no train-val split)
     else:
-        dataset = QuanDataset(structure_paths=structure_paths, target=target, artefacts_dir=artefacts_dir, args=args)
-        loader = DataLoader(dataset, batch_size=args.batch_size, sampler=None, shuffle=False)
+        dataset = QuanDataset(
+            structure_paths=structure_paths,
+            target=target,
+            artefacts_dir=artefacts_dir,
+            precomputed=precomputed,
+            args=args,
+        )
+        loader = DataLoader(dataset, batch_size=args.batch_size, sampler=None, shuffle=False, num_workers=args.processes)
 
         return loader

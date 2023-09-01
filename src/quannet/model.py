@@ -1,44 +1,9 @@
-from typing import Dict, Tuple, Union, Optional
+from typing import Union, Optional
 from pathlib import Path
 
-import torch
-
-from quannet.utils import LOGGER, DEFAULT_CONFIG_DICT, DEFAULT_CONFIG_KEYS, load_yaml, search_file
+from quannet.tasks import load_model_from_checkpoint
+from quannet.utils import LOGGER, load_yaml, search_file
 from quannet.trainer import QuanTrainer
-
-
-def load_model_from_checkpoint(
-    weights: Union[str, Path], device: Optional[torch.device] = None
-) -> Tuple[torch.nn.Module, Dict]:
-    """
-    Load a PyTorch model from a checkpoint file.
-
-    Args:
-        weights: Path to the checkpoint file containing the model weights.
-        device: Device to which the model should be loaded. If None, the model will remain on the CPU.
-
-    Returns:
-        A tuple containing the loaded model and the entire checkpoint dictionary.
-
-    Raises:
-        FileNotFoundError: If the provided 'weights' file path does not exist.
-    """
-
-    weights_path = Path(weights)
-    if not weights_path.exists():
-        raise FileNotFoundError(f"'weights' {weights_path} does not exist")
-
-    ckpt = torch.load(str(weights_path), map_location='cpu')
-    args = {**DEFAULT_CONFIG_DICT, **(ckpt.get('train_args', {}))}
-
-    model = ckpt['model']
-    if device:
-        model = model.to(device)
-
-    model.args = {k: v for k, v in args.items() if k in DEFAULT_CONFIG_KEYS}
-    model.pt_path = str(weights_path)
-
-    return model, ckpt
 
 
 class Model:
@@ -90,7 +55,7 @@ class Model:
             self.trainer.model = self.trainer.get_model(model=self.model, weights=self.model if self.ckpt else None)
             self.model = self.trainer.model
         self.trainer.train()
-        # self.model, _ = load_model_from_checkpoint(str(self.trainer.best))
+        self.model, _ = load_model_from_checkpoint(str(self.trainer.best))
         self.overrides = self.model.args
 
     @staticmethod

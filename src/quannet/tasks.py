@@ -1,11 +1,15 @@
-from typing import Union
+from copy import deepcopy
+from typing import Any, Dict, Tuple, Union, Optional
+from pathlib import Path
+from datetime import datetime
 
 import torch
 import torch.nn.functional as F
 from torch import nn, optim
 import lightning.pytorch as pl
 
-from quannet.utils import LOGGER, DEFAULT_CONFIG, IterableNamespace
+from quannet import __version__
+from quannet.utils import LOGGER, DEFAULT_CONFIG, DEFAULT_CONFIG_DICT, DEFAULT_CONFIG_KEYS, IterableNamespace
 from quannet.config import get_config
 
 
@@ -83,3 +87,43 @@ class LitModel(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = optim.Adam(self.model.parameters(), lr=self.args.lr)
         return optimizer
+
+    def on_save_checkpoint(self, checkpoint: Dict[str, Any]):
+        checkpoint['model'] = deepcopy(self.model)
+        checkpoint['train_args'] = vars(self.args)
+        checkpoint['date'] = datetime.now().isoformat()
+        checkpoint['version'] = __version__
+
+
+def load_model_from_checkpoint(
+    weights: Union[str, Path], device: Optional[torch.device] = None
+) -> Tuple[torch.nn.Module, Dict]:
+    """
+    Load a PyTorch model from a checkpoint file.
+
+    Args:
+        weights: Path to the checkpoint file containing the model weights.
+        device: Device to which the model should be loaded. If None, the model will remain on the CPU.
+
+    Returns:
+        A tuple containing the loaded model and the entire checkpoint dictionary.
+
+    Raises:
+        FileNotFoundError: If the provided 'weights' file path does not exist.
+    """
+
+    weights_path = Path(weights)
+    if not weights_path.exists():
+        raise FileNotFoundError(f"'weights' {weights_path} does not exist")
+
+    ckpt = torch.load(str(weights_path), map_location='cpu')
+    args = {**DEFAULT_CONFIG_DICT, **(ckpt.get('train_args', {}))}
+
+    model = ckpt['model']
+    if device:
+        model = model.to(device)
+
+    model.args = {k: v for k, v in args.items() if k in DEFAULT_CONFIG_KEYS}
+    model.pt_path = str(weights_path)
+
+    return model, ckpt

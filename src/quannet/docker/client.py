@@ -16,7 +16,7 @@ class QuanDockerClient:
         source_dir: Union[str, Path],
         save_dir: Union[str, Path],
         image: Optional[str] = None,
-        module: str = 'quannet.make_inputs',
+        module: str = 'make_inputs',
     ):
         self.image = image
         self.source_dir = Path(source_dir)

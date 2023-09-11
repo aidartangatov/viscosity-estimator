@@ -6,12 +6,20 @@ from setuptools import setup, find_packages
 
 FILE = Path(__file__).resolve()
 PARENT = FILE.parent
-REQUIREMENTS = [f'{x.name}{x.specifier}' for x in pkg.parse_requirements((PARENT / 'requirements.txt').read_text())]
+
+
+def parse_requirements(file_path):
+    return [f'{x.name}{x.specifier}' for x in pkg.parse_requirements((file_path).read_text())]
 
 
 def get_version():
     file = PARENT / 'src/quannet/__init__.py'
     return re.search(r'^__version__ = [\'"]([^\'"]*)[\'"]', file.read_text(encoding='utf-8'), re.M)[1]
+
+
+REQUIREMENTS = parse_requirements(PARENT / 'requirements/inputs.txt') + parse_requirements(
+    PARENT / 'requirements/model.txt'
+)
 
 
 setup(

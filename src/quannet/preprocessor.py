@@ -104,7 +104,7 @@ class QuanPreprocessor:
             if self.args.docker_image:
                 inputs = run_make_inputs(**shared_params, image=self.args.docker_image)
             else:
-                inputs = make_inputs(**shared_params, return_arrays=return_arrays)
+                inputs = make_inputs(**shared_params, return_arrays=return_arrays, logger=LOGGER)
 
         # Convert format into [sample_size, channels, depth, height, width]
         inputs = np.expand_dims(np.array(inputs), 1)

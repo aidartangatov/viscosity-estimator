@@ -1,5 +1,6 @@
 import os
 import random
+import logging
 import argparse
 import subprocess
 import multiprocessing
@@ -10,8 +11,6 @@ from itertools import islice
 from tqdm import tqdm
 from Bio.PDB import PDBIO, PDBParser
 import numpy as np
-
-from quannet.utils import LOGGER, extend_docstring_from
 
 if TYPE_CHECKING:
     import Bio.PDB.Structure
@@ -61,6 +60,7 @@ class APBSWrapper:
         grid_dim,
         grid_spacing,
         output_dir,
+        logger,
         config_file_name='apbs_params.in',
         keep_artefacts=False,
         inner_dielectric=2.0,
@@ -82,6 +82,8 @@ class APBSWrapper:
             'potential': self.output_dir / f"potential_{self.input_path.with_suffix('.dx').name}",
             'charge': self.output_dir / f"charge_{self.input_path.with_suffix('.dx').name}",
         }
+
+        self.logger = logger
 
         self.grid_dim = grid_dim
         self.grid_spacing = grid_spacing
@@ -110,7 +112,8 @@ class APBSWrapper:
             '--noopt',
             '--quiet',
         ]
-        LOGGER.debug(f'Running PDB2PQR by command: {" ".join(command)}')
+        if self.logger:
+            self.logger.debug(f'Running PDB2PQR by command: {" ".join(command)}')
         subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def _prepare_config_file(self, **kwargs):
@@ -170,7 +173,8 @@ class APBSWrapper:
             except subprocess.CalledProcessError:
                 raise RuntimeError(f'Error running APBS with command: {" ".join(command)}')
 
-        LOGGER.debug(f'Running APBS by command: {" ".join(command)}')
+        if self.logger:
+            self.logger.debug(f'Running APBS by command: {" ".join(command)}')
 
         try:
             with self.artefacts_paths['log'].open('r') as f:
@@ -299,6 +303,7 @@ def get_esp_array(
     output_dir: Union[str, Path] = '.',
     remove_artefacts: bool = True,
     write_esp_array: bool = True,
+    logger: Optional[logging.Logger] = None,
 ) -> np.ndarray:
     """
     Generate an Electrostatic Potential (ESP) array for the given molecular structure.
@@ -324,6 +329,7 @@ def get_esp_array(
         output_dir: Directory for saving output files.
         remove_artefacts: Whether to remove intermediate files post-calculation.
         write_esp_array: Whether to write the ESP array to a file.
+        logger: Logger instance for logs.
 
     Returns:
         An ESP array holding the calculated electrostatic potential.
@@ -350,6 +356,7 @@ def get_esp_array(
         grid_spacing=grid_spacing,
         inner_dielectric=2.0,
         outer_dielectric=80,
+        logger=logger,
     )
 
     zap.run()
@@ -372,7 +379,6 @@ def get_esp_array(
     return esp_array
 
 
-@extend_docstring_from(get_esp_array)
 def get_esp_array_rotations(
     structure_path: Union[str, Path],
     grid_dim: int = 96,
@@ -381,6 +387,7 @@ def get_esp_array_rotations(
     output_dir: Union[str, Path] = '.',
     remove_artefacts: bool = True,
     write_esp_array: bool = True,
+    logger: Optional[logging.Logger] = None,
     num_augmentations: int = 10,
     processes: int = 4,
 ) -> List[np.ndarray]:
@@ -419,6 +426,7 @@ def get_esp_array_rotations(
             output_dir,
             remove_artefacts,
             write_esp_array,
+            logger,
         )
         for rotations in rotations_list
     ]
@@ -428,7 +436,7 @@ def get_esp_array_rotations(
     return esp_array_output
 
 
-def load_esp_arrays(dir_path: Union[str, Path]) -> List[np.ndarray]:
+def load_esp_arrays(dir_path: Union[str, Path], logger: Optional[logging.Logger] = None) -> List[np.ndarray]:
     """
     Load Electrostatic Potential (ESP) grids from .npy files located in a specified directory.
 
@@ -443,12 +451,16 @@ def load_esp_arrays(dir_path: Union[str, Path]) -> List[np.ndarray]:
     esp_arrays_paths = list(dir_path.glob('*.npy'))
 
     if not esp_arrays_paths:
-        LOGGER.warning('No matching ESP array files found!')
+        if logger:
+            logger.warning('No matching ESP array files found!')
         return []
 
     esp_arrays = [np.load(p) for p in esp_arrays_paths]
 
     return esp_arrays
+
+
+get_esp_array_rotations.__doc__ += '\n\n' + (get_esp_array.__doc__ or '')
 
 
 def get_structure_paths(structures: Union[str, Path]) -> Union[Path, List[Path]]:
@@ -488,6 +500,7 @@ def make_inputs(
     remove_artefacts: bool = True,
     train_mode: bool = False,
     return_arrays: bool = False,
+    logger: Optional[logging.Logger] = None,
 ) -> Optional[List[np.ndarray]]:
     """
     Generate Electrostatic Potential (ESP) grids for provided molecular structures and save them to a specified
@@ -509,6 +522,7 @@ def make_inputs(
         remove_artefacts: If True, any pre-existing ESP grids in the `artefacts_dir` are removed.
         train_mode: When set to True, generate additional augmented ESP grids for each file.
         return_arrays: If True, return a list of the computed ESP arrays.
+        logger: Logger instance for logs.
 
     Returns:
         List of ESP arrays if `return_arrays` is set to True, otherwise None.
@@ -518,10 +532,11 @@ def make_inputs(
     """
 
     if not train_mode and (num_augmentations is not None or processes is not None):
-        LOGGER.warning(
-            "'num_augmentations' and/or 'processes' param is not None, ",
-            "however it is ignored when 'train_mode' is False.",
-        )
+        if logger:
+            logger.warning(
+                "'num_augmentations' and/or 'processes' param is not None, ",
+                "however it is ignored when 'train_mode' is False.",
+            )
 
     if isinstance(structure_paths, (Path, str)):
         structure_paths = [structure_paths]

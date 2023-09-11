@@ -54,7 +54,7 @@ def run_make_inputs(
     artefacts_dir = Path(artefacts_dir).resolve()
     save_dir = artefacts_dir.parent
 
-    docker_client = QuanDockerClient(source_dir=source_dir, save_dir=save_dir, image=image, module='quannet.make_inputs')
+    docker_client = QuanDockerClient(source_dir=source_dir, save_dir=save_dir, image=image, module='make_inputs')
     container_structure_paths = [
         docker_client.container_datasets_dir / Path(path).resolve().relative_to(source_dir) for path in structure_paths
     ]

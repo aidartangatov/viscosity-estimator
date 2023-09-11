@@ -1,0 +1,5 @@
+tqdm==4.66.1
+numpy==1.25.1
+biopython==1.79
+pdb2pqr==3.4.1
+docker==6.1.3

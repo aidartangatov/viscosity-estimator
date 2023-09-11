@@ -24,16 +24,12 @@ RUN wget https://github.com/Electrostatics/apbs/releases/download/v3.4.1/APBS-3.
 
 WORKDIR /app
 
-COPY ./requirements.txt .
+COPY ./requirements/inputs.txt requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY ./pyproject.toml .
-COPY ./setup.cfg .
-COPY ./setup.py .
-COPY ./MANIFEST.in .
-COPY ./src ./src
+COPY ./src/quannet/make_inputs.py .
 
-ENV PYTHONPATH /app/src
+ENV PYTHONPATH /app
 
 ENV APBS_BIN_DIR="/opt/apbs/bin"
 ENV PATH="${APBS_BIN_DIR}:${PATH}"

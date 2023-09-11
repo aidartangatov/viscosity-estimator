@@ -215,27 +215,6 @@ setup_logging(LOGGING_NAME, verbose=True)
 LOGGER = logging.getLogger(LOGGING_NAME)
 
 
-def extend_docstring_from(source_func):
-    """
-    Decorator to extend the docstring of the target function using the docstring of the source function.
-
-    Args:
-        source_func: The function whose docstring will be appended to the target function's docstring.
-
-    Returns:
-        function: The decorated function with the extended docstring.
-    """
-
-    def decorator(target_func):
-        if target_func.__doc__:
-            target_func.__doc__ += '\n' + (source_func.__doc__ or '')
-        else:
-            target_func.__doc__ = source_func.__doc__
-        return target_func
-
-    return decorator
-
-
 def common_deepest_directory(paths: List[Union[str, Path]]) -> Path:
     """
     Determine the deepest common directory of a list of pathlib.Path objects.

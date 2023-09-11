@@ -6,11 +6,8 @@
 *.log
 *.dx
 *.in
+!MANIFEST.in
 runs/
-
-
-# APBS pre-compiled binary
-APBS-3.4.1.Linux/
 
 # Git
 .git

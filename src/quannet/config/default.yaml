@@ -1,12 +1,18 @@
 # General Settings
-mode: train  # Mode for QuanNet (e.g., 'train', 'predict')
-dataset:  # Path to the dataset directory
+mode: predict  # Mode for QuanNet (e.g., 'train', 'predict')
+docker_image: quannet:latest  # docker image tag where to prepare model inputs
 
 # Optional Experiment Details
 project: # Project name (optional)
 name:  # Experiment name (optional, results saved in 'project/name' directory)
 
+# Prediction Settings
+structures:  # Source directory for PDB structures
+model:  # Path to pre-trained model file (e.g., 'quannet.pt')
+
 # Training Settings
+dataset:  # The directory path to the dataset, which includes both the structural data files
+          # and a CSV table mapping each structure to its corresponding target values.
 grid_dim: 96  # Number of grid points along each axis
 grid_spacing: 0.75  # Spacing between grid points (in Angstroms)
 shell_width: 2.0  # Thickness of surface shell (in Angstroms)
@@ -31,10 +37,6 @@ every_n_train_steps:  # Steps between checkpoints (optional), used in Lightning'
 # Data Column Names
 path_csv_col: path  # Column name for paths in CSV
 target_csv_col: target  # Column name for targets in CSV
-
-# Prediction Settings
-structures:  # Source directory for PDB structures
-model:  # Path to pre-trained model file (e.g., 'quannet.pt')
 
 # Custom config.yml
 config:  # Path to custom config file for overriding this one (optional)

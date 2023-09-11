@@ -1,24 +1,20 @@
 import os
 import random
-import tempfile
+import argparse
 import subprocess
 import multiprocessing
-from types import SimpleNamespace
-from typing import TYPE_CHECKING, Dict, List, Tuple, Union, Optional
+from typing import TYPE_CHECKING, List, Tuple, Union, Optional
 from pathlib import Path
 from itertools import islice
 
+from tqdm import tqdm
 from Bio.PDB import PDBIO, PDBParser
 import numpy as np
 
-from quannet.utils import LOGGER, DEFAULT_CONFIG, DEFAULT_CONFIG_KEYS
-from quannet.config import get_config
+from quannet.utils import LOGGER, extend_docstring_from
 
 if TYPE_CHECKING:
     import Bio.PDB.Structure
-
-APBS_PATH = os.environ['APBS_PATH']
-PYTHON = os.environ['PYTHON']
 
 
 class APBSWrapper:
@@ -56,6 +52,8 @@ class APBSWrapper:
     """
 
     line_preceding_network_coordinates = 'object 3 class array type double rank 0 items'
+    apbs = os.environ['APBS']
+    python = os.environ['PYTHON']
 
     def __init__(
         self,
@@ -75,6 +73,7 @@ class APBSWrapper:
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         self.artefacts_paths = {
+            'pdb': self.input_path,
             'pqr': self.output_dir / self.input_path.with_suffix('.pqr').name,
             'log': self.output_dir / self.input_path.with_suffix('.log').name,
             'config': self.output_dir / config_file_name,
@@ -101,7 +100,7 @@ class APBSWrapper:
         """Convert PDB to PQR"""
 
         command = [
-            PYTHON,
+            self.python,
             '-m',
             'pdb2pqr',
             str(self.input_path),
@@ -164,7 +163,7 @@ class APBSWrapper:
         self._run_pdb2pqr()
         self._prepare_config_file(**kwargs)
 
-        command = [APBS_PATH, str(self.artefacts_paths['config'])]
+        command = [self.apbs, str(self.artefacts_paths['config'])]
         with self.artefacts_paths['log'].open('w') as logf:
             try:
                 subprocess.run(command, stdout=logf, check=True)
@@ -219,7 +218,7 @@ class APBSWrapper:
                 path.unlink()
 
 
-def get_molecule(input_file: Union[str, Path]) -> 'Bio.PDB.Structure.Structure':
+def load_molecule(input_file: Union[str, Path]) -> 'Bio.PDB.Structure.Structure':
     """Retrieve a molecule's structure from a given input file using PDB parser.
 
     Args:
@@ -270,57 +269,61 @@ def euler_rotate(
     return structure
 
 
-def save_molecule(structure: 'Bio.PDB.Structure.Structure', prefix: Optional[str] = None) -> Path:
+def save_molecule(structure: 'Bio.PDB.Structure.Structure', file_path: Union[str, Path]) -> None:
     """
-    Save the given molecular structure to a temporary PDB file.
+    Save the given molecular structure to a specified file_path.
 
-    This function takes a Bio.PDB.Structure.Structure object as input and saves it to a temporary PDB file.
-    The file is saved in the temporary directory of the operating system.
+    This function takes a Bio.PDB.Structure.Structure object as input and saves it to a PDB file at the specified path.
 
     Args:
         structure: The molecular structure to be saved.
-        prefix: Optional string prefix for the temporary PDB file name.
-
-    Returns:
-        Path: The path to the created temporary PDB file.
-
-    Note:
-        The temporary PDB file will not be deleted automatically. Make sure to manage the temporary files as necessary.
+        file_path: The location where the molecular structure should be saved as a PDB file.
+    Raises:
+        ValueError: If the provided file_path does not have a '.pdb' extension.
     """
+
+    file_path = Path(file_path)
+    if file_path.suffix.lower() != '.pdb':
+        raise ValueError("The provided path must have a '.pdb' extension.")
     pdb_io = PDBIO()
     pdb_io.set_structure(structure)
-
-    with tempfile.NamedTemporaryFile(suffix='.pdb', prefix=prefix, delete=False) as tmpfile:
-        file_path = Path(tmpfile.name)
-        LOGGER.debug(f'Created PDB file: {str(file_path)}')
-        pdb_io.save(str(file_path))
-
-    return file_path
+    pdb_io.save(str(file_path))
 
 
 def get_esp_array(
-    structure,
+    structure_path: Union[str, Path],
     rotations: Optional[Tuple[float, float, float]] = None,
     grid_dim: int = 96,
     grid_spacing: float = 0.75,
     shell_width: float = 2.0,
     output_dir: Union[str, Path] = '.',
     remove_artefacts: bool = True,
+    write_esp_array: bool = True,
 ) -> np.ndarray:
     """
-    Generates an Electrostatic Potential (ESP) array based on the provided molecular structure.
+    Generate an Electrostatic Potential (ESP) array for the given molecular structure.
 
-    Given a molecular structure, this function optionally rotates the molecule using the specified angles,
-    performs electrostatic calculations using the APBSWrapper class, and then creates an ESP array.
+    Given the path to a molecular structure file, this function:
+    1. Loads the molecular structure from the provided file.
+    2. If specified, rotates the molecule using the given angles.
+    3. Saves the optionally rotated structure to a temporary PDB file within the designated output directory.
+    4. Utilizes the APBSWrapper class to:
+       a. Initialize the ESP calculations setup with the provided grid configurations and dielectric properties.
+       b. Run the electrostatic calculations.
+       c. Load the potential and accessibility network from the results.
+    5. Constructs an ESP array, where points outside a given shell_width are set to zero.
+    6. If set, removes calculation artefacts and saves the ESP array to a file.
+    The result is an ESP array representing the electrostatic potential of the molecule.
 
     Args:
-        structure: The molecular structure for which to calculate the ESP.
-        rotations: A tuple containing the angles in degrees to rotate the molecule around the X, Y, and Z axes.
-        grid_dim: The grid dimensions for the electrostatic calculations. Defaults to 96.
-        grid_spacing: The spacing between grid points for the electrostatic calculations. Defaults to 0.75.
-        shell_width: The threshold for the electrostatic shell width. Defaults to 2.0.
-        output_dir: The directory where all output files will be saved. Defaults to the current directory.
-        remove_artefacts: Flag to indicate if output files should be removed after calculations. Defaults to True.
+        structure_path: Path to the molecular structure file.
+        rotations: Angles in degrees to rotate the molecule around the X, Y, and Z axes.
+        grid_dim: Grid dimensions for the electrostatic calculations.
+        grid_spacing: Spacing between grid points.
+        shell_width: Threshold for the electrostatic shell width.
+        output_dir: Directory for saving output files.
+        remove_artefacts: Whether to remove intermediate files post-calculation.
+        write_esp_array: Whether to write the ESP array to a file.
 
     Returns:
         An ESP array holding the calculated electrostatic potential.
@@ -330,12 +333,14 @@ def get_esp_array(
         2. The electrostatic potential is set to zero for points outside the given shell_width threshold.
     """
 
+    structure_path = Path(structure_path)
+    structure = load_molecule(structure_path)
+    structure_name = structure_path.with_suffix('').name
     if rotations:
         structure = euler_rotate(structure, rotations)
-        structure_name = f'{str(structure.get_id())}_{rotations[0]:06.2f}x{rotations[1]:06.2f}y{rotations[2]:06.2f}z_'
-    else:
-        structure_name = f'{str(structure.get_id())}_'
-    structure_path = save_molecule(structure, prefix=structure_name)
+        structure_name = f'{structure_name}_{rotations[0]:06.2f}x{rotations[1]:06.2f}y{rotations[2]:06.2f}z'
+    structure_path = Path(output_dir, structure_name + '.pdb')
+    save_molecule(structure, structure_path)
 
     zap = APBSWrapper(
         input_path=structure_path,
@@ -360,54 +365,60 @@ def get_esp_array(
 
     if remove_artefacts:
         zap.remove_artefacts()
-    else:
-        np_file_path = Path(output_dir, structure_name[:-1]).with_suffix('.npy')
+    if write_esp_array:
+        np_file_path = Path(output_dir, structure_name).with_suffix('.npy')
         np.save(np_file_path, esp_array)
 
     return esp_array
 
 
-def generate_esp_grids(
-    structure_file: Union[str, Path],
-    config: Union[Dict, SimpleNamespace] = DEFAULT_CONFIG,
-    **kwargs,
+@extend_docstring_from(get_esp_array)
+def get_esp_array_rotations(
+    structure_path: Union[str, Path],
+    grid_dim: int = 96,
+    grid_spacing: float = 0.75,
+    shell_width: float = 2.0,
+    output_dir: Union[str, Path] = '.',
+    remove_artefacts: bool = True,
+    write_esp_array: bool = True,
+    num_augmentations: int = 10,
+    processes: int = 4,
 ) -> List[np.ndarray]:
-    """Generate ESP grids from a given molecule file.
+    """
+    Generate multiple ESP grids for a given molecule file through various rotations.
+
+    This function leverages multiprocessing to concurrently generate a series of ESP grids by applying
+    different random rotations to the input molecule. Each grid is generated in a separate process,
+    speeding up the process considerably when multiple CPU cores are available.
+
+    For a detailed explanation on the grid generation process and other shared parameters, see
+    the `generate_single_esp_grid` function.
 
     Args:
-        structure_file: The file path or object that contains the molecular structure data.
-        config: Configuration settings for grid generation.
-        **kwargs: Additional keyword arguments to override `config` settings or specify args for get_esp_array:
-            remove_artefacts: Whether output files should be removed after calculations. Defaults to True.
-            artefacts_dir: The directory where generated grids will be saved. Defaults to current directory.
-
-    Raises:
-        ValueError: If any required arguments are missing in the `config`.
+        num_augmentations: Number of random rotations (data augmentations) to generate.
+        processes: Number of parallel processes to use for concurrent grid generation. This dictates
+                   the number of cores the function can utilize. Defaults to 4, but it's constrained
+                   by the available CPU cores.
 
     Returns:
-        List of ESP arrays or a list of tuples containing ESP arrays and molecule objects, if `return_mol` is True.
+        List[np.ndarray]: List of generated ESP arrays for each rotation.
     """
 
-    config = get_config(config, {k: v for k, v in kwargs.items() if k in DEFAULT_CONFIG_KEYS})
-
-    artefacts_dir = kwargs.get('artefacts_dir', '.')
-    structure = get_molecule(structure_file)
-    output_dir = Path(artefacts_dir, str(structure.get_id()))
-
     rotations_list = [
-        (random.uniform(0, 180), random.uniform(0, 180), random.uniform(0, 180)) for _ in range(config.num_augmentations)
+        (random.uniform(0, 180), random.uniform(0, 180), random.uniform(0, 180)) for _ in range(num_augmentations)
     ]
 
-    processes = min(multiprocessing.cpu_count() - 1, config.processes)
+    processes = min(multiprocessing.cpu_count() - 1, processes)
     arguments_list = [
         (
-            structure,
+            structure_path,
             rotations,
-            config.grid_dim,
-            config.grid_spacing,
-            config.shell_width,
+            grid_dim,
+            grid_spacing,
+            shell_width,
             output_dir,
-            config.remove_artefacts,
+            remove_artefacts,
+            write_esp_array,
         )
         for rotations in rotations_list
     ]
@@ -417,25 +428,170 @@ def generate_esp_grids(
     return esp_array_output
 
 
-def load_esp_grids(artefacts_dir: Union[str, Path]) -> List[np.ndarray]:
+def load_esp_arrays(dir_path: Union[str, Path]) -> List[np.ndarray]:
     """
     Load Electrostatic Potential (ESP) grids from .npy files located in a specified directory.
 
-    Parameters:
-    - structure_file: Name of the structure file (minus the extension).
-    - artefacts_dir: The directory where .npy files containing the ESP grids are stored.
+    Args:
+        dir_path: The directory where .npy files containing the ESP grids are stored.
 
     Returns:
-    - A list of NumPy arrays, each representing an ESP grid.
+        A list of NumPy arrays, each representing an ESP grid.
     """
 
-    artefacts_path = Path(artefacts_dir)
-    esp_arrays_paths = list(artefacts_path.glob('*.npy'))
+    dir_path = Path(dir_path)
+    esp_arrays_paths = list(dir_path.glob('*.npy'))
 
     if not esp_arrays_paths:
         LOGGER.warning('No matching ESP array files found!')
         return []
 
-    esp_grids = [np.load(p) for p in esp_arrays_paths]
+    esp_arrays = [np.load(p) for p in esp_arrays_paths]
 
-    return esp_grids
+    return esp_arrays
+
+
+def get_structure_paths(structures: Union[str, Path]) -> Union[Path, List[Path]]:
+    """
+    Retrieve all the paths to PDB files in the specified directory.
+
+    Args:
+        structures: The directory path where the PDB files are located or a single PDB file.
+
+    Returns:
+        A path or list of paths pointing to the PDB files found in the specified directory.
+
+    Raises:
+        FileNotFoundError: If no PDB files are found in the specified directory.
+    """
+    structures = Path(structures)
+    if structures.is_dir():
+        structure_paths = [p for p in structures.iterdir() if p.name.endswith('.pdb')]
+        if not structure_paths:
+            raise FileNotFoundError('No .pdb files found in the specified directory.')
+        return structure_paths
+    else:
+        if structures.name.endswith('pdb'):
+            return structures
+        else:
+            raise FileNotFoundError('Provided path is not a .pdb file.')
+
+
+def make_inputs(
+    structure_paths: Union[List[Union[str, Path]], str, Path],
+    grid_dim: int = 96,
+    grid_spacing: float = 0.75,
+    shell_width: float = 2.0,
+    num_augmentations: Optional[int] = None,
+    processes: Optional[int] = None,
+    artefacts_dir: Union[str, Path] = '.',
+    remove_artefacts: bool = True,
+    train_mode: bool = False,
+    return_arrays: bool = False,
+) -> Optional[List[np.ndarray]]:
+    """
+    Generate Electrostatic Potential (ESP) grids for provided molecular structures and save them to a specified
+    directory.
+
+    Given a list of paths or a single path to molecular structure files, this function processes each file to compute
+    the corresponding ESP grids. The grids are saved in subdirectories within the provided `artefacts_dir`. If the
+    `train_mode` is enabled, additional augmented ESP grids are generated for each file.
+
+    Args:
+        structure_paths: Either a single path or a list of paths pointing to molecular structure files.
+        grid_dim: Dimension of the cubic grid for the ESP computation.
+        grid_spacing: Spacing between grid points.
+        shell_width: Width of the shell used in the ESP computation.
+        num_augmentations: Specifies the number of augmented ESP grids to produce for each structure.
+                           Ignored if `train_mode` is False.
+        processes: Number of parallel processes for concurrent grid generation.
+        artefacts_dir: Directory to store the computed ESP grids.
+        remove_artefacts: If True, any pre-existing ESP grids in the `artefacts_dir` are removed.
+        train_mode: When set to True, generate additional augmented ESP grids for each file.
+        return_arrays: If True, return a list of the computed ESP arrays.
+
+    Returns:
+        List of ESP arrays if `return_arrays` is set to True, otherwise None.
+
+    Notes:
+        - When 'train_mode' is disabled, 'num_augmentations' and 'processes' are ignored.
+    """
+
+    if not train_mode and (num_augmentations is not None or processes is not None):
+        LOGGER.warning(
+            "'num_augmentations' and/or 'processes' param is not None, ",
+            "however it is ignored when 'train_mode' is False.",
+        )
+
+    if isinstance(structure_paths, (Path, str)):
+        structure_paths = [structure_paths]
+
+    esp_arrays = []
+    for structure_path in tqdm(structure_paths):
+        structure_path = Path(structure_path)
+        output_dir = Path(artefacts_dir, structure_path.with_suffix('').name)
+        output_dir.mkdir(parents=False)
+
+        shared_params = {
+            'structure_path': structure_path,
+            'grid_dim': grid_dim,
+            'grid_spacing': grid_spacing,
+            'shell_width': shell_width,
+            'output_dir': output_dir,
+            'remove_artefacts': remove_artefacts,
+            'write_esp_array': True,
+        }
+
+        if train_mode:
+            esp_array = get_esp_array_rotations(
+                **shared_params,
+                num_augmentations=num_augmentations,
+                processes=processes,
+            )
+            if return_arrays:
+                esp_arrays.extend(esp_array)
+        else:
+            esp_array = get_esp_array(**shared_params)
+            if return_arrays:
+                esp_arrays.append(esp_array)
+    if return_arrays:
+        return esp_arrays
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Generate ESP array files')
+
+    parser.add_argument(
+        '--structure_paths',
+        type=str,
+        nargs='+',
+        required=True,
+        help='Path(s) to the molecular structure file(s) or directory containing them.',
+    )
+    parser.add_argument('--grid_dim', type=int, default=96, help='Dimension of the cubic grid for ESP computation.')
+    parser.add_argument('--grid_spacing', type=float, default=0.75, help='Spacing between grid points.')
+    parser.add_argument('--shell_width', type=float, default=2.0, help='Width of the shell used in the ESP computation.')
+    parser.add_argument('--artefacts_dir', type=str, default='.', help='Directory where ESP grids should be saved.')
+    parser.add_argument(
+        '--remove_artefacts', action='store_true', help='If set, removes any pre-existing ESP grids in artefacts_dir.'
+    )
+    parser.add_argument(
+        '--num_augmentations', type=int, help='Number of augmented ESP arrays to generate per structure file.'
+    )
+    parser.add_argument('--processes', type=int, help='Number of parallel processes to use.')
+
+    args = parser.parse_args()
+
+    train_mode = args.num_augmentations is not None
+
+    make_inputs(
+        structure_paths=args.structure_paths,
+        grid_dim=args.grid_dim,
+        grid_spacing=args.grid_spacing,
+        shell_width=args.shell_width,
+        num_augmentations=args.num_augmentations,
+        processes=args.processes,
+        artefacts_dir=args.artefacts_dir,
+        remove_artefacts=args.remove_artefacts,
+        train_mode=train_mode,
+    )

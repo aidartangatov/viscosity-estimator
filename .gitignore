@@ -5,6 +5,7 @@ runs/
 *.log
 *.dx
 *.in
+!MANIFEST.in
 *io.mc
 
 # APBS

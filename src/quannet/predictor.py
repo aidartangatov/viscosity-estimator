@@ -1,53 +1,30 @@
-from typing import List, Union
+from typing import Union
 from pathlib import Path
 
 import pandas as pd
 import torch
 
 from quannet.tasks import QuanModel
-from quannet.utils import LOGGER, SETTINGS, DEFAULT_CONFIG, increment_path
+from quannet.utils import LOGGER, DEFAULT_CONFIG
 from quannet.config import get_config
-from quannet.dataset import build_input
+from quannet.make_inputs import get_structure_paths
+from quannet.preprocessor import QuanPreprocessor
 
 
-class QuanPredictor:
+class QuanPredictor(QuanPreprocessor):
     """
     Class for making predictions using the QuanModel.
     """
 
     def __init__(self, config=DEFAULT_CONFIG, overrides=None):
+        super().__init__(config=config, overrides=overrides)
         self.args = get_config(config, overrides)
         self.model = None
         self.dataset = None
         self.loader = None
 
-        project = self.args.project or Path(SETTINGS['runs_dir'])
-        name = self.args.name or f'{self.args.mode}'
-        if self.args.precomputed_input:
-            self.save_dir = Path(project) / name
-        else:
-            self.save_dir = Path(increment_path(Path(project) / name, exist_ok=self.args.exist_ok))
-        self.artefacts_dir = self.save_dir / SETTINGS['artefacts_dir_name']
-
-    def _prepare_input(self, structures: List[Union[str, Path]]):
-        """
-        Prepare the input for the model using a list of structures.
-        Generates DataLoader based on the structure paths provided.
-        """
-        self.args.num_augmentations = 1
-        LOGGER.info('Started generating model input')
-        loader = build_input(
-            structures,
-            artefacts_dir=self.artefacts_dir,
-            precomputed=self.args.precomputed_input,
-            train_val_split=False,
-            args=self.args,
-        )
-        LOGGER.info('Finished generating model input')
-        self.loader = loader
-
     @torch.no_grad()
-    def predict(self, structures: Union[str, Path]):
+    def predict(self, structures: Union[str, Path]) -> pd.Series:
         """
         Perform prediction based on the given structures directory path.
 
@@ -59,16 +36,16 @@ class QuanPredictor:
         """
 
         LOGGER.info('Starting inference ...')
-        structures = [p for p in Path(structures).iterdir() if p.name.endswith('.pdb')]
-        if not structures:
-            raise FileNotFoundError('No .pdb files found in the specified directory.')
-        self._prepare_input(structures)
+        structure_paths = get_structure_paths(structures)
+        self.loader = self.get_loader(structure_paths)
         all_predictions = []
-        for x, _ in self.loader:
+        for x in self.loader:
             y_pred = self.model(x)
             all_predictions.append(y_pred.detach().cpu())
         concatenated_predictions = torch.cat(all_predictions, dim=0).numpy().squeeze()
-        pd_output = pd.Series(index=[Path(p).with_suffix('').name for p in structures], data=concatenated_predictions)
+        pd_output = pd.Series(
+            index=[Path(p).with_suffix('').name for p in structure_paths], data=concatenated_predictions
+        )
         pd_output.to_csv(self.save_dir / 'prediction.csv')
         LOGGER.info('Inference finished')
         return pd_output

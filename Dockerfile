@@ -24,16 +24,18 @@ RUN wget https://github.com/Electrostatics/apbs/releases/download/v3.4.1/APBS-3.
 
 WORKDIR /app
 
+COPY ./requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
 COPY ./pyproject.toml .
 COPY ./setup.cfg .
+COPY ./setup.py .
+COPY ./MANIFEST.in .
 COPY ./src ./src
 
-RUN pip install --no-cache-dir .
+ENV PYTHONPATH /app/src
 
 ENV APBS_BIN_DIR="/opt/apbs/bin"
 ENV PATH="${APBS_BIN_DIR}:${PATH}"
-ENV APBS_PATH="${APBS_BIN_DIR}/apbs"
+ENV APBS="${APBS_BIN_DIR}/apbs"
 ENV PYTHON="/usr/bin/python3"
-
-RUN useradd -ms /bin/bash appuser
-USER appuser

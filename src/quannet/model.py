@@ -9,6 +9,8 @@ from quannet.tasks import load_model_from_checkpoint
 from quannet.utils import LOGGER, TEST_STRUCTURES, load_yaml, search_file
 from quannet.trainer import QuanTrainer
 from quannet.predictor import QuanPredictor
+from quannet.make_inputs import get_structure_paths
+from quannet.preprocessor import QuanPreprocessor
 
 
 class Model:
@@ -21,6 +23,7 @@ class Model:
         self.model = None
         self.trainer = None
         self.predictor = None
+        self.preprocessor = None
         self.ckpt = None
         self.ckpt_path = None
         self.overrides = {}
@@ -48,6 +51,17 @@ class Model:
     def __call__(self, structures: Optional[Union[str, Path]] = None, **kwargs):
         """Make predictions on structures."""
         return self.predict(structures, **kwargs)
+
+    def preprocess(self, structures: Optional[Union[str, Path]] = None, **kwargs) -> None:
+        if structures is None:
+            structures = TEST_STRUCTURES
+            LOGGER.warning(f"'structures' is missing, using 'structures={structures}'.")
+        overrides = self.overrides.copy()
+        overrides.update(kwargs)
+        overrides['mode'] = kwargs.get('mode', 'preprocess')
+        self.preprocessor = QuanPreprocessor(overrides=overrides)
+        structure_paths = get_structure_paths(structures)
+        self.preprocessor.preprocess_inputs(structure_paths, return_arrays=False)
 
     def predict(self, structures: Optional[Union[str, Path]] = None, **kwargs) -> pd.Series:
         """
@@ -98,6 +112,22 @@ class Model:
         """Reset arguments when loading a PyTorch model."""
         include = {'grid_dim', 'grid_spacing', 'shell_width', 'num_augmentations'}
         return {k: v for k, v in args.items() if k in include}
+
+    def __getattr__(self, attr: str) -> None:
+        """
+        Overrides the default __getattr__ method to provide a custom error message.
+        Raises an AttributeError if the requested attribute is not found.
+        """
+        name = self.__class__.__name__
+        class_attributes = ', '.join(dir(self.__class__))  # Listing class-level attributes
+
+        error_message = (
+            f"'{name}' object has no attribute '{attr}'.\n"
+            f"Valid class-level attributes are: {class_attributes}\n"
+            f"For more details, refer to:\n{self.__doc__}"
+        )
+
+        raise AttributeError(error_message)
 
     @property
     def model_map(self):

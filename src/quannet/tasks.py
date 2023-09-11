@@ -1,5 +1,5 @@
 from copy import deepcopy
-from typing import Any, Dict, Tuple, Union, Optional
+from typing import Any, Dict, Tuple, Union
 from pathlib import Path
 from datetime import datetime
 
@@ -70,13 +70,12 @@ class LitModel(L.LightningModule):
         self.model = model
         self.args = args
 
-    def forward(self, x):
-        return self.model(x)
-
     def training_step(self, batch, batch_idx):
         x, y = batch
-        y_hat = self(x)
+        y_hat = self.model(x)
         loss = F.huber_loss(y_hat, y)
+        metrics = {'train_loss': loss}
+        self.log_dict(metrics)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -85,12 +84,6 @@ class LitModel(L.LightningModule):
         loss = F.huber_loss(y_hat, y)
         metrics = {'val_loss': loss}
         self.log_dict(metrics)
-        return metrics
-
-    def predict_step(self, batch, batch_idx, dataloader_idx=0):
-        x, y = batch
-        y_hat = self.model(x)
-        return y_hat
 
     def configure_optimizers(self):
         optimizer = optim.Adam(self.model.parameters(), lr=self.args.lr)
@@ -103,15 +96,12 @@ class LitModel(L.LightningModule):
         checkpoint['version'] = __version__
 
 
-def load_model_from_checkpoint(
-    weights: Union[str, Path], device: Optional[torch.device] = None
-) -> Tuple[torch.nn.Module, Dict]:
+def load_model_from_checkpoint(weights: Union[str, Path]) -> Tuple[torch.nn.Module, Dict]:
     """
     Load a PyTorch model from a checkpoint file.
 
     Args:
         weights: Path to the checkpoint file containing the model weights.
-        device: Device to which the model should be loaded. If None, the model will remain on the CPU.
 
     Returns:
         A tuple containing the loaded model and the entire checkpoint dictionary.
@@ -120,18 +110,16 @@ def load_model_from_checkpoint(
         FileNotFoundError: If the provided 'weights' file path does not exist.
     """
 
-    weights_path = Path(weights)
-    if not weights_path.exists():
-        raise FileNotFoundError(f"'weights' {weights_path} does not exist")
+    weights = Path(weights)
+    if not weights.exists():
+        raise FileNotFoundError(f"'weights' {weights} does not exist")
 
-    ckpt = torch.load(str(weights_path), map_location='cpu')
+    ckpt = torch.load(str(weights), map_location='cpu')
     args = {**DEFAULT_CONFIG_DICT, **(ckpt.get('train_args', {}))}
 
     model = ckpt['model']
-    if device:
-        model = model.to(device)
 
     model.args = {k: v for k, v in args.items() if k in DEFAULT_CONFIG_KEYS}
-    model.pt_path = str(weights_path)
+    model.pt_path = str(weights)
 
     return model, ckpt

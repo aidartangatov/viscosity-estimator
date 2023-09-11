@@ -1,31 +1,55 @@
 # QuanNet
 
-## Installation
+See below installation and usage example
 
-1. Install [APBS 3.4.1](https://apbs.readthedocs.io/en/latest/getting/index.html#installing-from-pre-compiled-binaries)
-from pre-compiled binaries
-2. Export environment variables for:
-   * Python interpreter with installed dependencies
-   * APBS binary file
-   ```commandline
-   export PYTHON=/path/to/interpreter
-   export APBS_PATH=/path/APBS-3.4.1.Linux/bin/apbs
-   ```
+<details open>
+<summary>Install</summary>
 
-4. Install quannet Python package:
 
-```commandline
+
+Build docker image and pip install the quannet package:
+
+
+```bash
+docker build -t quannet .
 pip install .
 ```
 
-## Usage:
+</details>
 
-### Train:
-```commandline
-quannet mode=train data=quannet_test
+<details open>
+<summary>Usage</summary>
+
+### CLI
+
+QuanNet may be used directly in the Command Line Interface (CLI) with a `quannet` command:
+
+#### Predict
+
+```bash
+quannet predict model=models/quannet.pt structures=datasets/quannet_test/structures
 ```
 
-### Predict:
-```commandline
-quannet mode=predict model=models/quannet.pt structures=datasets/quannet_test/structures
+#### Train
+
+```bash
+quannet train dataset=datasets/quannet_test
+```
+
+
+
+### Python
+
+QuanNet may also be used directly in a Python environment, and accepts the same as in the CLI example above:
+
+```python
+from quannet import QuanNet
+
+# Load a model
+model = QuanNet("models/quannet.pt")
+
+# Use the model
+model.predict(structures="datasets/quannet_test/structures")
+model.train(dataset="datasets/quannet_test", epochs=3)
+
 ```

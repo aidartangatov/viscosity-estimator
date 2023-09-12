@@ -1,16 +1,16 @@
+from tqdm import tqdm
+from typing import List, Tuple, Union, Optional, TYPE_CHECKING
+from Bio.PDB import PDBIO, PDBParser
+from pathlib import Path
+from itertools import islice
+
 import os
+import numpy as np
 import random
 import logging
 import argparse
 import subprocess
 import multiprocessing
-from typing import TYPE_CHECKING, List, Tuple, Union, Optional
-from pathlib import Path
-from itertools import islice
-
-from tqdm import tqdm
-from Bio.PDB import PDBIO, PDBParser
-import numpy as np
 
 if TYPE_CHECKING:
     import Bio.PDB.Structure
@@ -442,6 +442,7 @@ def load_esp_arrays(dir_path: Union[str, Path], logger: Optional[logging.Logger]
 
     Args:
         dir_path: The directory where .npy files containing the ESP grids are stored.
+        logger: Logger instance for logs.
 
     Returns:
         A list of NumPy arrays, each representing an ESP grid.

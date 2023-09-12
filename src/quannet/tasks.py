@@ -1,19 +1,18 @@
 from copy import deepcopy
+from torch import nn, optim
 from typing import Any, Dict, Tuple, Union
 from pathlib import Path
-from datetime import datetime
-
-import torch
-import torch.nn.functional as F
-from torch import nn, optim
-import lightning as L
-
 from quannet import __version__
-from quannet.utils import LOGGER, DEFAULT_CONFIG, DEFAULT_CONFIG_DICT, DEFAULT_CONFIG_KEYS, IterableNamespace
+from datetime import datetime
+from quannet.utils import LOGGER, DEFAULT_CONFIG, IterableNamespace, DEFAULT_CONFIG_DICT, DEFAULT_CONFIG_KEYS
 from quannet.config import get_config
 
+import torch
+import lightning as L
+import torch.nn.functional as F
 
-class QuanModel(nn.Module):
+
+class BaseModel(nn.Module):
     """
     Base class for QuanNet models
 
@@ -96,12 +95,12 @@ class LitModel(L.LightningModule):
         checkpoint['version'] = __version__
 
 
-def load_model_from_checkpoint(weights: Union[str, Path]) -> Tuple[torch.nn.Module, Dict]:
+def load_model_from_checkpoint(checkpoint: Union[str, Path]) -> Tuple[torch.nn.Module, Dict]:
     """
     Load a PyTorch model from a checkpoint file.
 
     Args:
-        weights: Path to the checkpoint file containing the model weights.
+        checkpoint: Path to the checkpoint file containing the model weights.
 
     Returns:
         A tuple containing the loaded model and the entire checkpoint dictionary.
@@ -110,16 +109,16 @@ def load_model_from_checkpoint(weights: Union[str, Path]) -> Tuple[torch.nn.Modu
         FileNotFoundError: If the provided 'weights' file path does not exist.
     """
 
-    weights = Path(weights)
-    if not weights.exists():
-        raise FileNotFoundError(f"'weights' {weights} does not exist")
+    checkpoint = Path(checkpoint)
+    if not checkpoint.exists():
+        raise FileNotFoundError(f"'checkpoint' {checkpoint} does not exist")
 
-    ckpt = torch.load(str(weights), map_location='cpu')
+    ckpt = torch.load(str(checkpoint), map_location='cpu')
     args = {**DEFAULT_CONFIG_DICT, **(ckpt.get('train_args', {}))}
 
     model = ckpt['model']
 
     model.args = {k: v for k, v in args.items() if k in DEFAULT_CONFIG_KEYS}
-    model.pt_path = str(weights)
+    model.pt_path = str(checkpoint)
 
     return model, ckpt

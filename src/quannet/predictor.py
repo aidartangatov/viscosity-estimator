@@ -1,17 +1,16 @@
 from typing import Union
 from pathlib import Path
-
-import pandas as pd
-import torch
-
 from quannet.tasks import QuanModel
 from quannet.utils import LOGGER, DEFAULT_CONFIG
 from quannet.config import get_config
 from quannet.make_inputs import get_structure_paths
-from quannet.preprocessor import QuanPreprocessor
+from quannet.preprocessor import Preprocessor
+
+import torch
+import pandas as pd
 
 
-class QuanPredictor(QuanPreprocessor):
+class Predictor(Preprocessor):
     """
     Class for making predictions using the QuanModel.
     """

@@ -1,25 +1,42 @@
 from types import SimpleNamespace
 from typing import Any, Dict, Union, Optional
 from pathlib import Path
+from quannet.tasks import load_model_from_checkpoint
+from quannet.utils import LOGGER, load_yaml, search_file, TEST_STRUCTURES
+from quannet.trainer import Trainer
+from quannet.predictor import Predictor
+from quannet.make_inputs import get_structure_paths
+from quannet.preprocessor import Preprocessor
 
 import pandas as pd
 import torch.nn
 
-from quannet.tasks import load_model_from_checkpoint
-from quannet.utils import LOGGER, TEST_STRUCTURES, load_yaml, search_file
-from quannet.trainer import QuanTrainer
-from quannet.predictor import QuanPredictor
-from quannet.make_inputs import get_structure_paths
-from quannet.preprocessor import QuanPreprocessor
-
 
 class Model:
     """
-    Class for handling training and prediction of QuanNet models.
+    A high-level interface for handling training and prediction tasks with QuanNet models.
+
+    Provides utilities for loading, building, training, and predicting QuanNet models from either pretrained
+    checkpoints or new configurations. Additionally, it provides a method for preprocessing model inputs.
+
+    Attributes
+        predictor: QuanPredictor instance for making predictions.
+        model: The neural network model instance.
+        trainer: QuanTrainer instance for training the model.
+        preprocessor: QuanPreprocessor instance for data preprocessing.
+        ckpt: Loaded model checkpoint if any.
+        ckpt_path: Path to the loaded model checkpoint.
+        overrides: Dictionary of overridden configuration settings.
+        metrics: Metrics related to the model's performance (if any).
+
+    Methods:
+        __call__: Alias for the predict method.
+        preprocess: Preprocess input structures for the model.
+        predict: Make predictions on the provided structures.
+        train: Train the model using provided or default settings.
     """
 
     def __init__(self, model_path: Optional[Union[str, Path]] = None):
-        self.predictor = None
         self.model = None
         self.trainer = None
         self.predictor = None
@@ -35,9 +52,9 @@ class Model:
             model_path = search_file(model_path, dir='models')
             self._load_model(model_path)
 
-    def _load_model(self, weights: Union[str, Path]) -> None:
+    def _load_model(self, checkpoint: Union[str, Path]) -> None:
         """Load a pre-trained model from a checkpoint."""
-        self.model, self.ckpt = load_model_from_checkpoint(weights)
+        self.model, self.ckpt = load_model_from_checkpoint(checkpoint)
         self.ckpt_path = self.model.pt_path
         self.overrides = self.model.args = self._reset_ckpt_args(self.model.args)
 
@@ -48,24 +65,31 @@ class Model:
         overrides = self.overrides.copy()
         self.model = model(overrides=overrides)
 
-    def __call__(self, structures: Optional[Union[str, Path]] = None, **kwargs):
+    def __call__(self, structures: Optional[Union[str, Path]] = None, **kwargs) -> pd.Series:
         """Make predictions on structures."""
         return self.predict(structures, **kwargs)
 
     def preprocess(self, structures: Optional[Union[str, Path]] = None, **kwargs) -> None:
+        """
+        Preprocess input structures for the model.
+
+        Args:
+            structures: Path to directory with .pdb structures to preprocess.
+            **kwargs: Additional keyword arguments.
+        """
         if structures is None:
             structures = TEST_STRUCTURES
             LOGGER.warning(f"'structures' is missing, using 'structures={structures}'.")
         overrides = self.overrides.copy()
         overrides.update(kwargs)
         overrides['mode'] = kwargs.get('mode', 'preprocess')
-        self.preprocessor = QuanPreprocessor(overrides=overrides)
+        self.preprocessor = Preprocessor(overrides=overrides)
         structure_paths = get_structure_paths(structures)
         self.preprocessor.preprocess_inputs(structure_paths, return_arrays=False)
 
     def predict(self, structures: Optional[Union[str, Path]] = None, **kwargs) -> pd.Series:
         """
-        Make predictions on given structures.
+        Make predictions on provided structures.
 
         Args:
             structures: Path to directory with .pdb structures to predict on.
@@ -77,7 +101,7 @@ class Model:
         overrides = self.overrides.copy()
         overrides.update(kwargs)
         overrides['mode'] = kwargs.get('mode', 'predict')
-        self.predictor = QuanPredictor(overrides=overrides)
+        self.predictor = Predictor(overrides=overrides)
         self.predictor.model = self.predictor.get_model(model=self.model, weights=self.model if self.ckpt else None)
         self.model = self.predictor.model
         return self.predictor.predict(structures)
@@ -99,7 +123,7 @@ class Model:
             raise AttributeError("Dataset required but missing, pass 'dataset=/path/to/dataset'")
         if overrides.get('resume'):
             overrides['resume'] = self.ckpt_path
-        self.trainer = QuanTrainer(overrides=overrides)
+        self.trainer = Trainer(overrides=overrides)
         if not overrides.get('resume'):
             self.trainer.model = self.trainer.get_model(model=self.model, weights=self.model if self.ckpt else None)
             self.model = self.trainer.model
@@ -114,21 +138,12 @@ class Model:
         return {k: v for k, v in args.items() if k in include}
 
     def __getattr__(self, attr: str) -> None:
-        """
-        Overrides the default __getattr__ method to provide a custom error message.
-        Raises an AttributeError if the requested attribute is not found.
-        """
-        name = self.__class__.__name__
-        class_attributes = ', '.join(dir(self.__class__))  # Listing class-level attributes
-
-        error_message = (
-            f"'{name}' object has no attribute '{attr}'.\n"
-            f"Valid class-level attributes are: {class_attributes}\n"
-            f"For more details, refer to:\n{self.__doc__}"
-        )
-
-        raise AttributeError(error_message)
+        """Raises an AttributeError if the requested attribute is not found."""
+        basic_error = f"'{self.__class__.__name__}' object has no attribute '{attr}'."
+        doc_hint = f"\nFor valid attributes and methods, refer to the class documentation.\n{self.__doc__}"
+        raise AttributeError(basic_error + doc_hint)
 
     @property
     def model_map(self):
+        """Property placeholder. Requires implementation to map model names to classes."""
         raise NotImplementedError('Provide model map!')

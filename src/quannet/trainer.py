@@ -1,30 +1,29 @@
 from typing import Tuple, Union, Optional
 from pathlib import Path
 from collections import Counter
-
-import pandas as pd
-import numpy as np
-import lightning as L
-from lightning.pytorch.loggers import CSVLogger
-from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
-
-from quannet.tasks import LitModel, QuanModel
+from quannet.tasks import LitModel, BaseModel
 from quannet.utils import (
     LOGGER,
     SETTINGS,
+    ArrayLike,
+    search_file,
     DATASETS_DIR,
     DEFAULT_CONFIG,
-    ArrayLike,
     IterableNamespace,
     DuplicatedDataError,
     InsufficientDataError,
-    search_file,
 )
 from quannet.config import get_config
-from quannet.preprocessor import QuanPreprocessor
+from quannet.preprocessor import Preprocessor
+from lightning.pytorch.loggers import CSVLogger
+from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
+
+import numpy as np
+import pandas as pd
+import lightning as L
 
 
-class QuanTrainer(QuanPreprocessor):
+class Trainer(Preprocessor):
     """
     Trainer class for training QuanNet models
 
@@ -125,7 +124,7 @@ class QuanTrainer(QuanPreprocessor):
         self.trainer.save_checkpoint(best_model_path)
         self.best = best_model_path
 
-    def get_model(self, model: QuanModel, weights=None, verbose=True):
+    def get_model(self, model: BaseModel, weights=None, verbose=True):
         """
         Load the weights into the model and return it.
 

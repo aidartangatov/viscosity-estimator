@@ -1,11 +1,11 @@
+from quannet.tasks import BaseModel
+from quannet.utils import IterableNamespace
+
 import torch
 import torch.nn as nn
 
-from quannet.tasks import QuanModel
-from quannet.utils import IterableNamespace
 
-
-class CNN3DModule(QuanModel):
+class CNN3DModule(BaseModel):
     N_FILTERS = 2
 
     def __init__(self, **kwargs):

@@ -1,55 +1,71 @@
 # QuanNet
 
-See below installation and usage example
+QuanNet is an open-source pipeline leveraging ResNet for predicting antibody solution viscosity. 
 
-<details open>
-<summary>Install</summary>
+## Features:
+ - **Open Source**: QuanNet is a completely open-source solution, making it readily accessible to both academic and 
+                    commercial users. 
+ - **ResNet Architecture**: Uses a deep neural network based on the ResNet architecture for viscosity predictions.
+ - **Easy-to-Use CLI & Python API**: Seamlessly train, fine-tune, or infer directly from the command line or 
+                                     within Python.
 
+## Installation:
 
+### Requirements:
+- Docker installed on your machine.
+- Python>=3.8 environment with pip.
 
-Build docker image and pip install the quannet package:
-
-
-```bash
+### Installation Steps:
+1. Build the docker image:
+```commandline
 docker build -t quannet .
+```
+2. Install the quannet package via pip:
+```commandline
 pip install .
 ```
 
-</details>
+## Usage
 
-<details open>
-<summary>Usage</summary>
+### Command-Line Interface (CLI)
+QuanNet is equipped with a user-friendly CLI for easy interaction and can be accessed using the `quannet` command.
 
-### CLI
+#### Prediction
+Predict the viscosity of antibody solutions using a pretrained model:
 
-QuanNet may be used directly in the Command Line Interface (CLI) with a `quannet` command:
-
-#### Predict
-
-```bash
+```commandline
 quannet predict model=models/quannet.pt structures=datasets/quannet_test/structures
 ```
 
-#### Train
+#### Training
+Train QuanNet on your dataset:
 
-```bash
+```commandline
 quannet train dataset=datasets/quannet_test
 ```
 
-
-
-### Python
-
-QuanNet may also be used directly in a Python environment, and accepts the same as in the CLI example above:
+### Python API:
+For those who prefer using QuanNet within a Python environment, you can seamlessly integrate it into your scripts:
 
 ```python
 from quannet import QuanNet
 
-# Load a model
+# Load a pretrained model
 model = QuanNet("models/quannet.pt")
 
-# Use the model
+# Predict viscosity
 model.predict(structures="datasets/quannet_test/structures")
-model.train(dataset="datasets/quannet_test", epochs=3)
 
+# Train the model on your dataset
+model.train(dataset="datasets/quannet_test", epochs=3)
 ```
+
+### Contribute:
+If you are interested in contributing to the development of QuanNet or have any questions,
+feel free to open an issue or submit a pull request. We appreciate the community's support and contributions.
+
+### Citation:
+If you use QuanNet in your research, please cite our paper:
+
+### License
+MIT

@@ -1,19 +1,18 @@
+from tqdm import tqdm
 from typing import Dict, List, Union, Optional
 from pathlib import Path
-
-from tqdm import tqdm
-import numpy as np
-import torch
-from torch.utils.data import DataLoader
-
-from quannet.utils import LOGGER, SETTINGS, DEFAULT_CONFIG, InsufficientDataError, increment_path
+from quannet.utils import LOGGER, SETTINGS, DEFAULT_CONFIG, increment_path, InsufficientDataError
 from quannet.config import get_config
 from quannet.dataset import QuanDataset, QuanSampler
+from torch.utils.data import DataLoader
 from quannet.make_inputs import make_inputs, load_esp_arrays
 from quannet.docker.make_inputs import run_make_inputs
 
+import numpy as np
+import torch
 
-class QuanPreprocessor:
+
+class Preprocessor:
     """
     Class for preparing input Electrostatic Potential (ESP) grids for QuanNet models.
 

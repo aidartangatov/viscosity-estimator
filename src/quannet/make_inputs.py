@@ -1,4 +1,5 @@
 from tqdm import tqdm
+from numba import jit
 from typing import List, Tuple, Union, Optional, TYPE_CHECKING
 from Bio.PDB import PDBIO, PDBParser
 from pathlib import Path
@@ -30,6 +31,7 @@ class APBSWrapper:
         artefacts_paths (dict): A mapping of various output and log files.
         grid_dim (int): The grid dimensions for the APBS calculations.
         grid_spacing (float): The spacing between grid points.
+        shell_width: Threshold for the electrostatic shell width.
         inner_dielectric (float): The dielectric constant for the inner molecule.
         outer_dielectric (float): The dielectric constant for the surrounding solvent.
         keep_artefacts (bool): Whether to keep or remove output artefacts after calculations.
@@ -51,14 +53,13 @@ class APBSWrapper:
     """
 
     line_preceding_network_coordinates = 'object 3 class array type double rank 0 items'
-    apbs = os.environ['APBS']
-    python = os.environ['PYTHON']
 
     def __init__(
         self,
         input_path,
         grid_dim,
         grid_spacing,
+        shell_width,
         output_dir,
         logger,
         config_file_name='apbs_params.in',
@@ -87,6 +88,7 @@ class APBSWrapper:
 
         self.grid_dim = grid_dim
         self.grid_spacing = grid_spacing
+        self.shell_width = shell_width
         self.inner_dielectric = inner_dielectric
         self.outer_dielectric = outer_dielectric
 
@@ -97,6 +99,14 @@ class APBSWrapper:
         self.min = None
 
         self.has_run = False
+
+    @property
+    def apbs(self):
+        return os.environ['APBS']
+
+    @property
+    def python(self):
+        return os.environ['PYTHON']
 
     def _run_pdb2pqr(self):
         """Convert PDB to PQR"""
@@ -206,20 +216,72 @@ class APBSWrapper:
                 (self.grid_dim, self.grid_dim, self.grid_dim)
             )
 
-    # TODO: check performance after understand why threshold is 2.0 while the network values are 1.0
-    def check_probe(self, i, j, k, threshold=2.0):
-        step = round(threshold / self.grid_spacing)
-        for x in range(max(0, i - step), min(i + step, self.network['accessibility'].shape[0])):
-            for y in range(max(0, j - step), min(j + step, self.network['accessibility'].shape[1])):
-                for z in range(max(0, k - step), min(k + step, self.network['accessibility'].shape[2])):
-                    if self.network['accessibility'][x, y, z] < threshold:
-                        return True
-        return False
+    def process_array(self):
+        if not self.has_run:
+            raise RuntimeError('The APBS calculation must be run before processing network arrays.')
+        return _process_array(
+            self.network['accessibility'], self.network['potential'], self.shell_width, self.grid_spacing
+        )
 
     def remove_artefacts(self):
         for path in self.artefacts_paths.values():
             if path.exists():
                 path.unlink()
+
+
+@jit(nopython=True)
+def _check_probe(i: int, j: int, k: int, accessibility: np.ndarray, threshold: float, grid_spacing: float) -> bool:
+    """
+    Check if a given point (i, j, k) is within the proximity of any inaccessible point.
+
+    This function verifies if, within a defined radius around a point (i, j, k), there exists
+    any point that is deemed inaccessible (defined by the value being less than the threshold).
+
+    Parameters:
+        i, j, k: The x, y, z indices of the point in the 3D grid.
+        accessibility: A 3D array representing the accessibility of each point.
+        threshold: A value below which a point in the accessibility array is considered inaccessible.
+        grid_spacing: The spacing between points in the grid.
+
+    Returns:
+        True if an inaccessible point exists within the radius, False otherwise.
+    """
+    step = round(threshold / grid_spacing)
+    for x in range(max(0, i - step), min(i + step, accessibility.shape[0])):
+        for y in range(max(0, j - step), min(j + step, accessibility.shape[1])):
+            for z in range(max(0, k - step), min(k + step, accessibility.shape[2])):
+                if accessibility[x, y, z] < threshold:
+                    return True
+    return False
+
+
+@jit(nopython=True)
+def _process_array(
+    accessibility: np.ndarray, potential: np.ndarray, shell_width: float, grid_spacing: float
+) -> np.ndarray:
+    """
+    Process the accessibility and potential arrays to create a new array.
+
+    This function evaluates each point in the accessibility array. If the value at the point is
+    below a certain threshold or if the point is within the proximity of an inaccessible point,
+    the corresponding value in the potential array is copied to the new array.
+
+    Parameters:
+        accessibility: A 3D numpy array representing the accessibility of each point.
+        potential: A 3D array representing the potential at each point.
+        shell_width: The threshold value defining the 'shell' around inaccessible regions.
+        grid_spacing: The spacing between points in the grid.
+
+    Returns:
+        A new 3D array processed as per the rules defined above.
+    """
+    esp_array = np.zeros_like(accessibility)
+    for i in range(accessibility.shape[0]):
+        for j in range(accessibility.shape[1]):
+            for k in range(accessibility.shape[2]):
+                if accessibility[i, j, k] < 1.0 or _check_probe(i, j, k, accessibility, shell_width, grid_spacing):
+                    esp_array[i, j, k] = potential[i, j, k]
+    return esp_array
 
 
 def load_molecule(input_file: Union[str, Path]) -> 'Bio.PDB.Structure.Structure':
@@ -354,6 +416,7 @@ def get_esp_array(
         config_file_name=structure_path.with_suffix('.in').name,
         grid_dim=grid_dim,
         grid_spacing=grid_spacing,
+        shell_width=shell_width,
         inner_dielectric=2.0,
         outer_dielectric=80,
         logger=logger,
@@ -362,13 +425,7 @@ def get_esp_array(
     zap.run()
     zap.load_network('potential')
     zap.load_network('accessibility')
-
-    esp_array = np.zeros_like(zap.network['accessibility'])
-    for i in range(zap.network['accessibility'].shape[0]):
-        for j in range(zap.network['accessibility'].shape[1]):
-            for k in range(zap.network['accessibility'].shape[2]):
-                if zap.network['accessibility'][i, j, k] < 1.0 or zap.check_probe(i, j, k, shell_width):
-                    esp_array[i, j, k] = zap.network['potential'][i, j, k]
+    esp_array = zap.process_array()
 
     if remove_artefacts:
         zap.remove_artefacts()

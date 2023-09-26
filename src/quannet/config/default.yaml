@@ -19,7 +19,8 @@ shell_width: 2.0  # Thickness of surface shell (in Angstroms)
 num_augmentations: 5  # Number of data augmentations
 remove_artefacts: true  # Flag to remove artefacts
 precomputed_input: false  # Flag to use precomputed inputs
-lr: 0.001  # Learning rate
+lr: 0.0001  # Learning rate
+weight_decay: 0.00001 # L2 regularization
 deterministic: true  # Flag for deterministic training
 processes: 4  # Number of processes
 val_size: 0.2  # Fraction of data for validation

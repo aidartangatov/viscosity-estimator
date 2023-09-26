@@ -1,5 +1,4 @@
 from quannet.tasks import BaseModel
-from quannet.utils import IterableNamespace
 
 import torch
 import torch.nn as nn
@@ -10,15 +9,6 @@ class CNN3DModule(BaseModel):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.args = IterableNamespace(
-            **{
-                'grid_dim': self.args.grid_dim,
-                'grid_spacing': self.args.grid_spacing,
-                'shell_width': self.args.shell_width,
-                'num_augmentations': self.args.num_augmentations,
-            }
-        )
-
         self.convnet = nn.Sequential(*[layer for block in self._set_conv_blocks(self.N_FILTERS) for layer in block])
         self.drop_out = nn.Dropout(0.05)
         self.fc = nn.Sequential(nn.Linear(self.N_FILTERS * 512, 1), nn.ReLU())

@@ -1,6 +1,6 @@
 from typing import Union
 from pathlib import Path
-from quannet.tasks import QuanModel
+from quannet.tasks import BaseModel
 from quannet.utils import LOGGER, DEFAULT_CONFIG
 from quannet.config import get_config
 from quannet.make_inputs import get_structure_paths
@@ -49,7 +49,7 @@ class Predictor(Preprocessor):
         LOGGER.info('Inference finished')
         return pd_output
 
-    def get_model(self, model: QuanModel, weights=None, verbose=True):
+    def get_model(self, model: BaseModel, weights=None, verbose=True):
         """
         Load the weights into the model and set it to evaluation mode.
 

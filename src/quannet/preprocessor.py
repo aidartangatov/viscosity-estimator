@@ -89,6 +89,9 @@ class Preprocessor:
                 inputs.extend(esp_arrays)
 
         else:
+            if output_dir is None:
+                assert self.args.mode == 'preprocess'
+                output_dir = self.artefacts_dir
             shared_params = {
                 'structure_paths': structure_paths,
                 'grid_dim': self.args.grid_dim,
@@ -98,7 +101,7 @@ class Preprocessor:
                 'processes': self.args.processes,
                 'artefacts_dir': output_dir,
                 'remove_artefacts': self.args.remove_artefacts,
-                'train_mode': self.args.mode == 'train',
+                'train_mode': self.args.mode in ('train', 'preprocess'),
             }
             if self.args.docker_image:
                 inputs = run_make_inputs(**shared_params, image=self.args.docker_image)

@@ -1,25 +1,25 @@
-import re
-import ast
-import sys
 from types import SimpleNamespace
 from typing import Dict, List, Union
 from difflib import get_close_matches
 from pathlib import Path
-
 from quannet.utils import (
     LOGGER,
-    QUANNET_MODEL,
-    DEFAULT_CONFIG,
-    TEST_STRUCTURES,
-    DEFAULT_CONFIG_DICT,
-    DEFAULT_CONFIG_PATH,
-    IterableNamespace,
     load_yaml,
     print_yaml,
     search_file,
+    QUANNET_MODEL,
+    DEFAULT_CONFIG,
+    TEST_STRUCTURES,
+    IterableNamespace,
+    DEFAULT_CONFIG_DICT,
+    DEFAULT_CONFIG_PATH,
 )
 
-MODES = 'train', 'val', 'predict'
+import re
+import ast
+import sys
+
+MODES = 'train', 'val', 'predict', 'preprocess'
 CLI_HELP_MESSAGE = ''
 
 

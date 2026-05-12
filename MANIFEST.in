@@ -1,1 +1,1 @@
-recursive-include *.yaml
+recursive-include src/quannet *.yaml

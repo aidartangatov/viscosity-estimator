@@ -1,7 +1,6 @@
 import re
 from pathlib import Path
 
-import pkg_resources as pkg
 from setuptools import setup, find_packages
 
 FILE = Path(__file__).resolve()
@@ -9,7 +8,11 @@ PARENT = FILE.parent
 
 
 def parse_requirements(file_path):
-    return [f'{x.name}{x.specifier}' for x in pkg.parse_requirements((file_path).read_text())]
+    return [
+        line.strip()
+        for line in file_path.read_text().splitlines()
+        if line.strip() and not line.strip().startswith('#')
+    ]
 
 
 def get_version():
@@ -27,8 +30,10 @@ setup(
     version=get_version(),
     python_requires='>=3.8',
     description='Estimation of Antibody Viscosity.',
-    packages=find_packages(),
+    package_dir={'': 'src'},
+    packages=find_packages(where='src'),
     include_package_data=True,
+    package_data={'quannet': ['config/*.yaml']},
     install_requires=REQUIREMENTS,
     entry_points={'console_scripts': ['quannet = quannet.config:entrypoint']},
 )

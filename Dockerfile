@@ -1,4 +1,11 @@
-FROM ubuntu:22.04
+# APBS 3.4.1 ships a pre-built binary for linux/amd64 only (no arm64 build in
+# the GitHub release). Pinning the platform here lets the same Dockerfile build
+# on both hosts:
+#   • Linux x86_64 / Intel macOS  → native execution.
+#   • Apple Silicon (arm64)       → Docker Desktop runs it under emulation
+#                                    (Rosetta or QEMU). Slower but functional.
+# Build the same way on either host:    docker build -t quannet .
+FROM --platform=linux/amd64 ubuntu:22.04
 
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y \

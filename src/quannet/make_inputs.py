@@ -652,8 +652,21 @@ if __name__ == '__main__':
         '--num_augmentations', type=int, help='Number of augmented ESP arrays to generate per structure file.'
     )
     parser.add_argument('--processes', type=int, help='Number of parallel processes to use.')
+    parser.add_argument(
+        '--seed',
+        type=int,
+        default=42,
+        help='Random seed used to generate rotation augmentation angles. Set explicitly so that '
+             "the host's seed propagates into this container's Python (the host's RNG state does "
+             'not cross the subprocess boundary).',
+    )
 
     args = parser.parse_args()
+
+    # Seed Python's random and NumPy's RNG before any rotation is sampled.
+    # `get_esp_array_rotations` draws Euler angles via random.uniform.
+    random.seed(args.seed)
+    np.random.seed(args.seed)
 
     train_mode = args.num_augmentations is not None
 

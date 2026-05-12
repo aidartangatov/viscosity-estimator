@@ -64,7 +64,8 @@ class ResNet3DModule(BaseModel):
                 blocks.append(ResBlock(channels, channels, stride=1))
         self.blocks = nn.Sequential(*blocks)
         self.dropout = nn.Dropout(0.1)
-        self.fc = nn.Sequential(nn.Linear(n_channels[-1], 1), nn.ReLU())
+        # No ReLU on the regression head — see cnn3d/model.py for rationale.
+        self.fc = nn.Sequential(nn.Linear(n_channels[-1], 1))
 
     def forward(self, x):
         x = self.bn(self.conv(x))

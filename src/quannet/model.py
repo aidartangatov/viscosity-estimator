@@ -1,3 +1,4 @@
+import random
 from types import SimpleNamespace
 from typing import Any, Dict, Union, Optional
 from pathlib import Path
@@ -8,6 +9,7 @@ from quannet.predictor import Predictor
 from quannet.make_inputs import get_structure_paths
 from quannet.preprocessor import Preprocessor
 
+import numpy as np
 import pandas as pd
 import torch.nn
 
@@ -83,6 +85,12 @@ class Model:
         overrides = self.overrides.copy()
         overrides.update(kwargs)
         overrides['mode'] = kwargs.get('mode', 'preprocess')
+        # Rotation augmentation pulls from `random.uniform` in the parent
+        # process. Seed it so preprocess outputs are reproducible across runs.
+        # Trainer.train seeds via `L.seed_everything` on its own path; predict
+        # mode does not generate rotations.
+        random.seed(42)
+        np.random.seed(42)
         self.preprocessor = Preprocessor(overrides=overrides)
         structure_paths = get_structure_paths(structures)
         self.preprocessor.preprocess_inputs(structure_paths, return_arrays=False)

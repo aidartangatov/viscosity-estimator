@@ -76,6 +76,10 @@ def run_make_inputs(
         command.append('--remove_artefacts')
     if train_mode:
         command.extend(['--num_augmentations', str(num_augmentations), '--processes', str(processes)])
+    # Seed the container's RNG so rotation augmentations are reproducible.
+    # Host-side seeding (e.g. L.seed_everything in Trainer.train) does not
+    # propagate across the Docker boundary.
+    command.extend(['--seed', '42'])
 
     volumes = docker_client.volumes_base.copy()
 
@@ -94,6 +98,6 @@ def run_make_inputs(
         size = len(structure_arrays)
         if train_mode and size != num_augmentations:
             raise InsufficientDataError(f'Only {size} ESP arrays were found, while {num_augmentations} expected.')
-        inputs.extend(load_esp_arrays(dir_path=structure_artefacts_dir))
+        inputs.extend(structure_arrays)
 
     return inputs

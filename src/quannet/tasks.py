@@ -89,7 +89,13 @@ class LitModel(L.LightningModule):
         return optimizer
 
     def on_save_checkpoint(self, checkpoint: Dict[str, Any]):
-        checkpoint['model'] = deepcopy(self.model)
+        # Save only weights + the model's qualified class so the loader can
+        # reinstantiate it. The previous implementation `deepcopy`'d the whole
+        # nn.Module into the checkpoint, which (a) duplicated the state_dict
+        # Lightning already writes, and (b) made checkpoints depend on the
+        # exact pickling-compatible Python/PyTorch versions used at save time.
+        checkpoint['model_state_dict'] = self.model.state_dict()
+        checkpoint['model_class'] = f'{self.model.__class__.__module__}.{self.model.__class__.__qualname__}'
         checkpoint['train_args'] = vars(self.args)
         checkpoint['date'] = datetime.now().isoformat()
         checkpoint['version'] = __version__
@@ -109,16 +115,32 @@ def load_model_from_checkpoint(checkpoint: Union[str, Path]) -> Tuple[torch.nn.M
         FileNotFoundError: If the provided 'weights' file path does not exist.
     """
 
+    import importlib
+
     checkpoint = Path(checkpoint)
     if not checkpoint.exists():
         raise FileNotFoundError(f"'checkpoint' {checkpoint} does not exist")
 
     ckpt = torch.load(str(checkpoint), map_location='cpu')
     args = {**DEFAULT_CONFIG_DICT, **(ckpt.get('train_args', {}))}
+    model_args = {k: v for k, v in args.items() if k in DEFAULT_CONFIG_KEYS}
 
-    model = ckpt['model']
+    if 'model_state_dict' in ckpt and 'model_class' in ckpt:
+        # New format: reinstantiate from class + state_dict
+        module_path, class_name = ckpt['model_class'].rsplit('.', 1)
+        cls = getattr(importlib.import_module(module_path), class_name)
+        model = cls(overrides=model_args)
+        model.load_state_dict(ckpt['model_state_dict'])
+    elif 'model' in ckpt and isinstance(ckpt['model'], torch.nn.Module):
+        # Legacy format: a deepcopied nn.Module was saved under 'model'.
+        model = ckpt['model']
+    else:
+        raise ValueError(
+            f"Checkpoint {checkpoint} has neither 'model_state_dict'+'model_class' "
+            "nor a legacy 'model' module."
+        )
 
-    model.args = {k: v for k, v in args.items() if k in DEFAULT_CONFIG_KEYS}
+    model.args = model_args
     model.pt_path = str(checkpoint)
 
     return model, ckpt

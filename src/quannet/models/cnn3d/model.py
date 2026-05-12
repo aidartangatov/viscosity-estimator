@@ -11,7 +11,12 @@ class CNN3DModule(BaseModel):
         super().__init__(**kwargs)
         self.convnet = nn.Sequential(*[layer for block in self._set_conv_blocks(self.N_FILTERS) for layer in block])
         self.drop_out = nn.Dropout(0.05)
-        self.fc = nn.Sequential(nn.Linear(self.N_FILTERS * 512, 1), nn.ReLU())
+        # No ReLU on the regression head — viscosity is positive but Huber loss
+        # learns through negative pre-activations during training. Clamping the
+        # output to >=0 caused every prediction to collapse to 0 in practice.
+        # The Sequential wrapper is preserved so state_dict keys (fc.0.weight,
+        # fc.0.bias) stay compatible with older checkpoints.
+        self.fc = nn.Sequential(nn.Linear(self.N_FILTERS * 512, 1))
 
     @staticmethod
     def _conv_block(in_channels, out_channels, kernel_size=3, padding='same', dilation=1, with_pooling=True):

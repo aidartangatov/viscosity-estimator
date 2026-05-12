@@ -17,66 +17,32 @@ DEFAULT_CONFIG_PATH = PACKAGE_ROOT / 'config/default.yaml'
 LOGGING_NAME = 'quannet'
 
 
-class SettingsManager(dict):
-    """
-    Manages settings
-    """
-
-    def __init__(self):
-        import copy
-
-        root = Path()
-        for d in Path(__file__).parents:
-            if (d / '.git').is_dir():
-                root = d
-
-        self.defaults = {
-            'runs_dir': str(root / 'runs'),
-            'datasets_dir': str(root / 'datasets'),
-            'models_dir': str(root / 'models'),
-            'test_dataset_dir': str(root / 'datasets' / 'quannet_test'),
-            'artefacts_dir_name': 'artefacts',
-            'logs_dir_name': 'logs',
-            'structures_dir_name': 'structures',
-            'container_workdir': '/app',
-            'container_datasets_dir': '/app/datasets',
-            'container_runs_dir': '/app/runs',
-        }
-
-        super().__init__(copy.deepcopy(self.defaults))
+def _repo_root() -> Path:
+    """Walk up from this file to find the enclosing git repo, else cwd."""
+    for d in Path(__file__).parents:
+        if (d / '.git').is_dir():
+            return d
+    return Path()
 
 
-SETTINGS = SettingsManager()
+_ROOT = _repo_root()
+SETTINGS = {
+    'runs_dir': str(_ROOT / 'runs'),
+    'datasets_dir': str(_ROOT / 'datasets'),
+    'models_dir': str(_ROOT / 'models'),
+    'test_dataset_dir': str(_ROOT / 'datasets' / 'quannet_test'),
+    'artefacts_dir_name': 'artefacts',
+    'logs_dir_name': 'logs',
+    'structures_dir_name': 'structures',
+    'container_workdir': '/app',
+    'container_datasets_dir': '/app/datasets',
+    'container_runs_dir': '/app/runs',
+}
 DATASETS_DIR = Path(SETTINGS['datasets_dir'])
 MODELS_DIR = Path(SETTINGS['models_dir'])
 RUNS_DIR = Path(SETTINGS['runs_dir'])
 TEST_STRUCTURES = Path(SETTINGS['test_dataset_dir'], SETTINGS['structures_dir_name'])
 QUANNET_MODEL = MODELS_DIR / 'quannet.pt'
-
-
-class IterableNamespace(SimpleNamespace):
-    """
-    An extended version of SimpleNamespace that supports iteration and some dictionary-like methods.
-    """
-
-    def __iter__(self):
-        """Allows iteration over attribute key-value pairs."""
-        return iter(vars(self).items())
-
-    def __str__(self):
-        """Provides a string representation of all attributes."""
-        return '\n'.join(f'{k}={v}' for k, v in vars(self).items())
-
-    def __getattr__(self, attr):
-        """Raises an AttributeError if an attribute is missing."""
-        raise AttributeError(
-            f"'{self.__class__.__name__}' object has no attribute '{attr}'. "
-            "This may be due to a modified 'default.yaml' file."
-        )
-
-    def get(self, key, default=None):
-        """Fetch an attribute value with a default if the attribute doesn't exist."""
-        return getattr(self, key, default)
 
 
 def load_yaml(file_path: Union[str, Path]) -> Dict:
@@ -112,7 +78,13 @@ for k, v in DEFAULT_CONFIG_DICT.items():
     if isinstance(v, str) and v.lower() == 'none':
         DEFAULT_CONFIG_DICT[k] = None
 DEFAULT_CONFIG_KEYS = DEFAULT_CONFIG_DICT.keys()
-DEFAULT_CONFIG = IterableNamespace(**DEFAULT_CONFIG_DICT)
+DEFAULT_CONFIG = SimpleNamespace(**DEFAULT_CONFIG_DICT)
+
+# Back-compat alias: legacy `models/quannet.pt` checkpoints pickled the args
+# namespace under the class name `IterableNamespace`. SimpleNamespace is a
+# drop-in (the old subclass only added unused helpers), so this alias lets
+# `torch.load` resolve the class during unpickling.
+IterableNamespace = SimpleNamespace
 
 
 def search_file(file: str, dir: Union[str, Path] = 'config') -> str:

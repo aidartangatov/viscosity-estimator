@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from typing import Tuple, Union, Optional
 from pathlib import Path
 from collections import Counter
@@ -9,11 +10,9 @@ from quannet.utils import (
     search_file,
     DATASETS_DIR,
     DEFAULT_CONFIG,
-    IterableNamespace,
     DuplicatedDataError,
     InsufficientDataError,
 )
-from quannet.config import get_config
 from quannet.preprocessor import Preprocessor
 from lightning.pytorch.loggers import CSVLogger
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
@@ -33,7 +32,6 @@ class Trainer(Preprocessor):
 
     def __init__(self, config=DEFAULT_CONFIG, overrides=None):
         super().__init__(config=config, overrides=overrides)
-        self.args = get_config(config, overrides)
         self.dataset = self.get_dataset()
         self.trainer = self.get_trainer()
         self.model = None
@@ -41,7 +39,7 @@ class Trainer(Preprocessor):
         self.train_loader = None
         self.val_loader = None
 
-    def get_dataset(self) -> IterableNamespace:
+    def get_dataset(self) -> SimpleNamespace:
         """
         Retrieves and validates the dataset specified in the configuration.
 
@@ -50,9 +48,9 @@ class Trainer(Preprocessor):
         and that the dataset's file paths are consistent with the records in its associated CSV file.
 
         Returns:
-            IterableNamespace: An object containing validated paths and target values for the dataset.
-                               The namespace contains two keys, 'structure_paths' and 'targets', which
-                               hold lists of valid pdb paths and corresponding target values, respectively.
+            SimpleNamespace: An object containing validated paths and target values for the dataset.
+                             The namespace exposes two attributes, 'structure_paths' and 'targets',
+                             holding lists of valid pdb paths and corresponding target values.
         """
         return check_dataset(
             self.args.dataset,
@@ -143,7 +141,7 @@ class Trainer(Preprocessor):
 
 def check_dataset(
     dataset: Union[str, Path], path_csv_col: str = 'path', target_csv_col: str = 'target', min_structures: int = 1
-) -> IterableNamespace:
+) -> SimpleNamespace:
     """
     Validates the integrity of a given dataset, ensuring the consistency between CSV records and file paths.
 
@@ -154,8 +152,8 @@ def check_dataset(
         min_structures: The minimum required number of valid structures with associated target values. Defaults to 1.
 
     Returns:
-        IterableNamespace: A namespace containing two keys, 'structure_paths' and 'targets', which hold lists
-                           of valid pdb paths and their corresponding target values, respectively.
+        SimpleNamespace: A namespace exposing two attributes, 'structure_paths' and 'targets', holding lists
+                         of valid pdb paths and their corresponding target values, respectively.
 
     Raises:
         InsufficientDataError: If the number of valid structures with targets is less than `min_structures`.
@@ -212,7 +210,7 @@ def check_dataset(
     ].tolist()
     valid_paths = [Path(data_dir / path).resolve() for path in valid_rel_paths]
 
-    return IterableNamespace(**{'structure_paths': valid_paths, 'targets': valid_targets})
+    return SimpleNamespace(structure_paths=valid_paths, targets=valid_targets)
 
 
 def find_stratification_bins(y: ArrayLike, max_bins_stratify: int = 5, min_samples_per_bin: int = 2):

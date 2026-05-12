@@ -2,7 +2,6 @@ from typing import Union
 from pathlib import Path
 from quannet.tasks import BaseModel
 from quannet.utils import LOGGER, DEFAULT_CONFIG
-from quannet.config import get_config
 from quannet.make_inputs import get_structure_paths
 from quannet.preprocessor import Preprocessor
 
@@ -18,7 +17,6 @@ class Predictor(Preprocessor):
 
     def __init__(self, config=DEFAULT_CONFIG, overrides=None):
         super().__init__(config=config, overrides=overrides)
-        self.args = get_config(config, overrides)
         self.model = None
         self.dataset = None
         self.loader = None

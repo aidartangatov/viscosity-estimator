@@ -10,7 +10,6 @@ from quannet.utils import (
     QUANNET_MODEL,
     DEFAULT_CONFIG,
     TEST_STRUCTURES,
-    IterableNamespace,
     DEFAULT_CONFIG_DICT,
     DEFAULT_CONFIG_PATH,
 )
@@ -133,7 +132,7 @@ def config2dict(config: Union[str, Path, Dict, SimpleNamespace]) -> Dict:
 
 def get_config(
     config: Union[str, Path, Dict, SimpleNamespace] = DEFAULT_CONFIG_DICT, overrides: Union[str, Dict] = None
-) -> IterableNamespace:
+) -> SimpleNamespace:
     """
     Load and merge configuration data from a file, dictionary, or a SimpleNamespace object.
 
@@ -151,7 +150,7 @@ def get_config(
         assert_matching_keys(config, overrides)
         config = {**config, **overrides}
 
-    return IterableNamespace(**config)
+    return SimpleNamespace(**config)
 
 
 def merge_around_equals(args: List[str]) -> List[str]:

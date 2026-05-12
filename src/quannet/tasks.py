@@ -1,10 +1,10 @@
-from copy import deepcopy
 from torch import nn, optim
+from types import SimpleNamespace
 from typing import Any, Dict, Tuple, Union
 from pathlib import Path
 from quannet import __version__
 from datetime import datetime
-from quannet.utils import LOGGER, DEFAULT_CONFIG, IterableNamespace, DEFAULT_CONFIG_DICT, DEFAULT_CONFIG_KEYS
+from quannet.utils import LOGGER, DEFAULT_CONFIG, DEFAULT_CONFIG_DICT, DEFAULT_CONFIG_KEYS
 from quannet.config import get_config
 
 import torch
@@ -64,7 +64,7 @@ class LitModel(L.LightningModule):
     This class defines the training, validation, and prediction procedures for QuanNet models.
     """
 
-    def __init__(self, model: torch.nn.Module, args: IterableNamespace):
+    def __init__(self, model: torch.nn.Module, args: SimpleNamespace):
         super().__init__()
         self.model = model
         self.args = args

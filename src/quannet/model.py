@@ -139,11 +139,30 @@ class Model:
         self.model, _ = load_model_from_checkpoint(str(self.trainer.best))
         self.overrides = self.model.args
 
+    # Args that should NOT carry over from a loaded checkpoint into a new run.
+    # These are runtime/environment knobs (where to save, what device to use,
+    # whether to resume, which dataset/structures to read). Everything *not*
+    # in this set is treated as a property of the trained model — that way
+    # adding a new physics/preprocessing param to `default.yaml` automatically
+    # gets persisted with the checkpoint instead of silently defaulting on
+    # reload. If a new *runtime* knob is added, add it here.
+    _CKPT_DROP_ARGS = frozenset({
+        'mode', 'project', 'name', 'exist_ok', 'resume', 'config',
+        'accelerator', 'devices', 'every_n_train_steps', 'deterministic',
+        'dataset', 'structures', 'model',
+        'path_csv_col', 'target_csv_col',
+        'docker_image', 'precomputed_input', 'remove_artefacts', 'processes',
+        'lr', 'weight_decay', 'batch_size', 'max_epochs',
+        'val_size', 'max_bins_stratify',
+    })
+
     @staticmethod
     def _reset_ckpt_args(args: Union[Dict, SimpleNamespace]) -> Dict[str, Any]:
-        """Reset arguments when loading a PyTorch model."""
-        include = {'grid_dim', 'grid_spacing', 'shell_width', 'num_augmentations'}
-        return {k: v for k, v in args.items() if k in include}
+        """Strip runtime/environment args from a loaded checkpoint's args.
+
+        See `_CKPT_DROP_ARGS` for the denylist and rationale.
+        """
+        return {k: v for k, v in args.items() if k not in Model._CKPT_DROP_ARGS}
 
     def __getattr__(self, attr: str) -> None:
         """Raises an AttributeError if the requested attribute is not found."""

@@ -1,3 +1,6 @@
+# Runtime deps for the input-preprocessing path: PDB → pdb2pqr → APBS → ESP grid.
+# These are installed inside the `quannet:latest` Docker image (see Dockerfile).
+# `setup.py` concatenates this file with `model.txt` for the host-side install.
 tqdm==4.66.1
 numpy==1.24.4
 numba==0.57.1

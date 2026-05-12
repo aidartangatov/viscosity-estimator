@@ -1,3 +1,6 @@
+# Runtime deps for the host-side model: training, inference, config loading.
+# Not installed inside the `quannet:latest` Docker image — PyTorch is heavy and
+# the container only runs APBS / pdb2pqr.
 pyyaml==6.0.1
 pandas==2.0.3
 torch==2.0.1

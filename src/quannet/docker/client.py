@@ -1,9 +1,8 @@
 from typing import Dict, List, Union, Optional
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from quannet.utils import SETTINGS
 
 import docker
-
-from quannet.utils import SETTINGS
 
 
 class QuanDockerClient:
@@ -28,12 +27,12 @@ class QuanDockerClient:
         return ['python3', '-m', self.module]
 
     @property
-    def container_datasets_dir(self) -> Path:
-        return Path(SETTINGS['container_datasets_dir'], self.source_dir.name)
+    def container_datasets_dir(self) -> PurePosixPath:
+        return PurePosixPath(SETTINGS['container_datasets_dir'], self.source_dir.name)
 
     @property
-    def container_save_dir(self) -> Path:
-        return Path(SETTINGS['container_runs_dir'], self.save_dir.name)
+    def container_save_dir(self) -> PurePosixPath:
+        return PurePosixPath(SETTINGS['container_runs_dir'], self.save_dir.name)
 
     @property
     def volumes_base(self) -> Dict[str, Dict[str, str]]:

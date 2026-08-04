@@ -1,5 +1,8 @@
 #  Runs artefatcs
 runs/
+
+# Trained checkpoints - version these in ClearML, not git
+/models/
 *.io
 *.pqr
 *.log

@@ -50,9 +50,7 @@ class Predictor(Preprocessor):
         predictions = torch.cat(all_predictions, dim=0).numpy().reshape(-1)
         data = self._collapse_augmentations(predictions, n_structures=len(structure_paths))
 
-        pd_output = pd.Series(
-            index=[Path(p).with_suffix('').name for p in structure_paths], data=data
-        )
+        pd_output = pd.Series(index=[Path(p).with_suffix('').name for p in structure_paths], data=data)
         pd_output.to_csv(self.save_dir / 'prediction.csv')
         LOGGER.info('Inference finished')
         return pd_output
@@ -81,8 +79,7 @@ class Predictor(Preprocessor):
         n_augs, remainder = divmod(n_predictions, n_structures)
         if remainder != 0 or n_augs == 0:
             raise ValueError(
-                f'Got {n_predictions} predictions for {n_structures} structures; '
-                'cannot collapse augmentations.'
+                f'Got {n_predictions} predictions for {n_structures} structures; ' 'cannot collapse augmentations.'
             )
         return predictions.reshape(n_structures, n_augs).mean(axis=1)
 

@@ -1,10 +1,9 @@
 from typing import Tuple, Union, Optional
+from quannet.utils import ArrayLike
+from torch.utils.data import Dataset, Sampler
 
 import numpy as np
 import torch
-from torch.utils.data import Dataset, Sampler
-
-from quannet.utils import ArrayLike
 
 
 class QuanDataset(Dataset):

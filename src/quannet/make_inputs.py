@@ -240,17 +240,21 @@ def _check_probe(i: int, j: int, k: int, accessibility: np.ndarray, threshold: f
     Parameters:
         i, j, k: The x, y, z indices of the point in the 3D grid.
         accessibility: A 3D array representing the accessibility of each point.
-        threshold: A value below which a point in the accessibility array is considered inaccessible.
+        threshold: The shell radius, in Angstroms, to search around (i, j, k).
         grid_spacing: The spacing between points in the grid.
 
     Returns:
         True if an inaccessible point exists within the radius, False otherwise.
     """
+    # `threshold` is a spatial radius (Angstroms), not an accessibility value - APBS's VDW
+    # accessibility is binary (0.0 inaccessible / 1.0 accessible), so it must be compared
+    # against the same fixed 1.0 cutoff `_process_array` uses, never against `threshold` itself
+    # (shell_width defaults to 2.0 > 1.0, which previously made this comparison always true).
     step = round(threshold / grid_spacing)
     for x in range(max(0, i - step), min(i + step, accessibility.shape[0])):
         for y in range(max(0, j - step), min(j + step, accessibility.shape[1])):
             for z in range(max(0, k - step), min(k + step, accessibility.shape[2])):
-                if accessibility[x, y, z] < threshold:
+                if accessibility[x, y, z] < 1.0:
                     return True
     return False
 
@@ -615,18 +619,26 @@ def make_inputs(
             'write_esp_array': True,
         }
 
-        if train_mode:
-            esp_array = get_esp_array_rotations(
-                **shared_params,
-                num_augmentations=num_augmentations,
-                processes=processes,
-            )
-            if return_arrays:
-                esp_arrays.extend(esp_array)
-        else:
-            esp_array = get_esp_array(**shared_params)
-            if return_arrays:
-                esp_arrays.append(esp_array)
+        try:
+            if train_mode:
+                esp_array = get_esp_array_rotations(
+                    **shared_params,
+                    num_augmentations=num_augmentations,
+                    processes=processes,
+                )
+                if return_arrays:
+                    esp_arrays.extend(esp_array)
+            else:
+                esp_array = get_esp_array(**shared_params)
+                if return_arrays:
+                    esp_arrays.append(esp_array)
+        except Exception as e:
+            # One malformed structure (e.g. a pdb2pqr crash on unusual backbone
+            # gaps) must not take down every other structure in this batch -
+            # the host-side caller checks each structure's output directory
+            # for completeness and treats an empty/partial one as a failure.
+            print(f'[make_inputs] FAILED structure={structure_path.name}: {type(e).__name__}: {e}', flush=True)
+            continue
     if return_arrays:
         return esp_arrays
 
@@ -657,8 +669,8 @@ if __name__ == '__main__':
         type=int,
         default=42,
         help='Random seed used to generate rotation augmentation angles. Set explicitly so that '
-             "the host's seed propagates into this container's Python (the host's RNG state does "
-             'not cross the subprocess boundary).',
+        "the host's seed propagates into this container's Python (the host's RNG state does "
+        'not cross the subprocess boundary).',
     )
 
     args = parser.parse_args()

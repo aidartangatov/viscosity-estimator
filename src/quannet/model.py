@@ -1,4 +1,3 @@
-import random
 from types import SimpleNamespace
 from typing import Any, Dict, Union, Optional
 from pathlib import Path
@@ -11,6 +10,7 @@ from quannet.preprocessor import Preprocessor
 
 import numpy as np
 import pandas as pd
+import random
 import torch.nn
 
 
@@ -146,15 +146,35 @@ class Model:
     # adding a new physics/preprocessing param to `default.yaml` automatically
     # gets persisted with the checkpoint instead of silently defaulting on
     # reload. If a new *runtime* knob is added, add it here.
-    _CKPT_DROP_ARGS = frozenset({
-        'mode', 'project', 'name', 'exist_ok', 'resume', 'config',
-        'accelerator', 'devices', 'every_n_train_steps', 'deterministic',
-        'dataset', 'structures', 'model',
-        'path_csv_col', 'target_csv_col',
-        'docker_image', 'precomputed_input', 'remove_artefacts', 'processes',
-        'lr', 'weight_decay', 'batch_size', 'max_epochs',
-        'val_size', 'max_bins_stratify',
-    })
+    _CKPT_DROP_ARGS = frozenset(
+        {
+            'mode',
+            'project',
+            'name',
+            'exist_ok',
+            'resume',
+            'config',
+            'accelerator',
+            'devices',
+            'every_n_train_steps',
+            'deterministic',
+            'dataset',
+            'structures',
+            'model',
+            'path_csv_col',
+            'target_csv_col',
+            'docker_image',
+            'precomputed_input',
+            'remove_artefacts',
+            'processes',
+            'lr',
+            'weight_decay',
+            'batch_size',
+            'max_epochs',
+            'val_size',
+            'max_bins_stratify',
+        }
+    )
 
     @staticmethod
     def _reset_ckpt_args(args: Union[Dict, SimpleNamespace]) -> Dict[str, Any]:

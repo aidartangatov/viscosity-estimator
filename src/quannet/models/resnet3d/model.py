@@ -67,11 +67,30 @@ class ResNet3DModule(BaseModel):
         # No ReLU on the regression head — see cnn3d/model.py for rationale.
         self.fc = nn.Sequential(nn.Linear(n_channels[-1], 1))
 
-    def forward(self, x):
+    def forward_spatial_features(self, x):
+        """Encoder trunk: return the pre-pool spatial feature map (B, C, d, h, w).
+
+        Used by the 3-D MAE pretext task, which needs spatial layout to
+        reconstruct masked voxels; ``forward_features`` pools this down to a
+        single vector for VICReg/linear-probing/the regression head.
+        """
         x = self.bn(self.conv(x))
         x = self.blocks(x)
+        return x
+
+    def forward_features(self, x):
+        """Encoder: return the pooled feature vector (B, C) before the head.
+
+        This is the representation used for SSL pretraining and linear probing;
+        ``forward`` just adds dropout + the regression head on top.
+        """
+        x = self.forward_spatial_features(x)
         x = x.view(x.shape[0], x.shape[1], -1)
         x = x.mean(dim=-1)
+        return x
+
+    def forward(self, x):
+        x = self.forward_features(x)
         x = self.dropout(x)
         x = self.fc(x)
         return x

@@ -199,7 +199,7 @@ def entrypoint(debug=''):
 
     # Define special commands and their associated actions.
     special_commands = {'help': lambda: LOGGER.info(CLI_HELP_MESSAGE), 'config': lambda: print_yaml(DEFAULT_CONFIG_PATH)}
-    full_args_dict = {**DEFAULT_CONFIG_DICT, **{k: None for k in MODES}, **special_commands}
+    full_args_dict = {**DEFAULT_CONFIG_DICT, **dict.fromkeys(MODES), **special_commands}
 
     # Add shortcuts for special commands (e.g., 'h' for 'help' and 'helps' for 'help').
     abbreviations = {k[0]: v for k, v in special_commands.items()}
@@ -271,10 +271,11 @@ def entrypoint(debug=''):
         LOGGER.exception(f"'target' is missing.\n{CLI_HELP_MESSAGE}")
         return
 
-    from quannet import QuanNet
+    from quannet.models import get_model_class
 
-    model = overrides.pop('model', DEFAULT_CONFIG.model)
-    model = QuanNet(model)
+    model_path = overrides.pop('model', DEFAULT_CONFIG.model)
+    arch = overrides.get('model_arch') or DEFAULT_CONFIG_DICT.get('model_arch', 'cnn3d')
+    model = get_model_class(arch)(model_path)
 
     getattr(model, mode)(**overrides)
 

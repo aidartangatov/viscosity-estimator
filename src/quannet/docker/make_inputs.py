@@ -1,12 +1,11 @@
 from typing import List, Union, Optional
 from pathlib import Path
-
 from docker.errors import DockerException
-import numpy as np
-
 from quannet.utils import LOGGER, InsufficientDataError, common_deepest_directory
 from quannet.make_inputs import load_esp_arrays
 from quannet.docker.client import QuanDockerClient
+
+import numpy as np
 
 
 def run_make_inputs(
@@ -20,7 +19,8 @@ def run_make_inputs(
     remove_artefacts: bool = True,
     train_mode: bool = False,
     image: Optional[str] = None,
-) -> List[np.ndarray]:
+    collect_arrays: bool = True,
+) -> Optional[List[np.ndarray]]:
     """
     Run 'make_inputs' function for all pdb structures from the specified directory
     inside a Docker container with all necessary dependencies installed.
@@ -40,9 +40,14 @@ def run_make_inputs(
         remove_artefacts: If True, any pre-existing ESP grids in the `artefacts_dir` are removed.
         train_mode: When set to True, generate additional augmented ESP grids for each file.
         image: Docker image name to use.
+        collect_arrays: If True (default), load and return every *.npy found under `artefacts_dir`
+            after the container run. Callers that only care about the files on disk (e.g. a batch
+            supervisor checking per-structure completeness) should pass False to skip re-loading
+            every previously-built structure's arrays on each call and to avoid raising on a single
+            bad structure - a caller doing its own per-structure disk check is unaffected by that.
 
     Returns:
-        List[np.ndarray]: List of ESP arrays.
+        List[np.ndarray]: List of ESP arrays, or None if `collect_arrays` is False.
     """
 
     if train_mode and (num_augmentations is None or processes is None):
@@ -54,11 +59,12 @@ def run_make_inputs(
     artefacts_dir = Path(artefacts_dir).resolve()
     save_dir = artefacts_dir.parent
 
-    docker_client = QuanDockerClient(source_dir=source_dir, save_dir=save_dir, image=image, module='make_inputs')
+    docker_client = QuanDockerClient(source_dir=source_dir, save_dir=save_dir, image=image, module='quannet.make_inputs')
     container_structure_paths = [
-        docker_client.container_datasets_dir / Path(path).resolve().relative_to(source_dir) for path in structure_paths
+        docker_client.container_datasets_dir / Path(path).resolve().relative_to(source_dir).as_posix()
+        for path in structure_paths
     ]
-    container_artefacts_dir_path = docker_client.container_save_dir / artefacts_dir.relative_to(save_dir)
+    container_artefacts_dir_path = docker_client.container_save_dir / artefacts_dir.relative_to(save_dir).as_posix()
 
     command = docker_client.command_base + [
         '--structure_paths',
@@ -91,6 +97,9 @@ def run_make_inputs(
             LOGGER.warning(line.decode('utf-8'))
     except DockerException as ex:
         raise ValueError(ex)
+
+    if not collect_arrays:
+        return None
 
     inputs = []
     for structure_artefacts_dir in artefacts_dir.iterdir():

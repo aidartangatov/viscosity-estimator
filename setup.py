@@ -1,7 +1,7 @@
-import re
 from pathlib import Path
-
 from setuptools import setup, find_packages
+
+import re
 
 FILE = Path(__file__).resolve()
 PARENT = FILE.parent
@@ -9,9 +9,7 @@ PARENT = FILE.parent
 
 def parse_requirements(file_path):
     return [
-        line.strip()
-        for line in file_path.read_text().splitlines()
-        if line.strip() and not line.strip().startswith('#')
+        line.strip() for line in file_path.read_text().splitlines() if line.strip() and not line.strip().startswith('#')
     ]
 
 

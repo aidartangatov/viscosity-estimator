@@ -1,5 +1,6 @@
 # General Settings
 mode: predict  # Mode for QuanNet (e.g., 'train', 'predict')
+model_arch: cnn3d  # Network architecture: 'cnn3d' (default, shipped) or 'resnet3d'
 docker_image: quannet:latest  # docker image tag where to prepare model inputs
 
 # Optional Experiment Details

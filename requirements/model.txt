@@ -7,3 +7,12 @@ torch==2.0.1
 lightning==2.0.7
 lightning-cloud<0.6
 setuptools<70
+# ESM2 baseline (host-side only, not installed in the quannet:latest container).
+# - numpy<2: pandas==2.0.3 has a numpy 1.x ABI and breaks with
+#   `ValueError: numpy.dtype size changed` if pip resolves numpy>=2.
+# - transformers<4.46: 4.46+ requires torch>=2.4, but torch is pinned to 2.0.1.
+#   ESM2 support landed in 4.24, so anything in [4.30, 4.46) works.
+transformers>=4.30,<4.46
+scikit-learn>=1.3,<2
+scipy>=1.10,<2
+numpy<2

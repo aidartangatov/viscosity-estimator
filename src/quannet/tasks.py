@@ -85,7 +85,13 @@ class LitModel(L.LightningModule):
         self.log_dict(metrics)
 
     def configure_optimizers(self):
-        optimizer = optim.Adam(self.model.parameters(), lr=self.args.lr)
+        # weight_decay is a config field that was previously not wired into the
+        # optimizer; honor it when present (default 0.0 keeps old behavior).
+        optimizer = optim.Adam(
+            self.model.parameters(),
+            lr=self.args.lr,
+            weight_decay=getattr(self.args, 'weight_decay', 0.0) or 0.0,
+        )
         return optimizer
 
     def on_save_checkpoint(self, checkpoint: Dict[str, Any]):
@@ -136,8 +142,7 @@ def load_model_from_checkpoint(checkpoint: Union[str, Path]) -> Tuple[torch.nn.M
         model = ckpt['model']
     else:
         raise ValueError(
-            f"Checkpoint {checkpoint} has neither 'model_state_dict'+'model_class' "
-            "nor a legacy 'model' module."
+            f"Checkpoint {checkpoint} has neither 'model_state_dict'+'model_class' " "nor a legacy 'model' module."
         )
 
     model.args = model_args

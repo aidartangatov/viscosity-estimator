@@ -20,24 +20,25 @@ RUN apt-get update && \
     libopenblas-serial-dev \
     liblapack-dev \
     libsuitesparse-dev \
-    libsuperlu-dev
-
+    libsuperlu-dev && \
+    rm -rf /var/lib/apt/lists/*
 
 RUN wget https://github.com/Electrostatics/apbs/releases/download/v3.4.1/APBS-3.4.1.Linux.zip && \
     unzip APBS-3.4.1.Linux.zip && \
     rm APBS-3.4.1.Linux.zip && \
     mv APBS-3.4.1.Linux /opt/apbs
 
-
 WORKDIR /app
 
-COPY ./requirements/inputs.txt requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+COPY ./requirements ./requirements
+RUN pip install --no-cache-dir -r requirements/inputs.txt
 
-COPY ./src/quannet/make_inputs.py .
+COPY pyproject.toml setup.py setup.cfg README* ./
+COPY src ./src
 
-ENV PYTHONPATH /app
+RUN pip install --no-cache-dir --no-deps .
 
+ENV PYTHONPATH=/app
 ENV APBS_BIN_DIR="/opt/apbs/bin"
 ENV PATH="${APBS_BIN_DIR}:${PATH}"
 ENV APBS="${APBS_BIN_DIR}/apbs"

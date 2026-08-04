@@ -34,14 +34,14 @@ QuanNet is equipped with a user-friendly CLI for easy interaction and can be acc
 Predict the viscosity of antibody solutions using a pretrained model:
 
 ```commandline
-quannet predict model=models/quannet.pt structures=datasets/quannet_test/structures
+quannet predict model=<path-to-trained-model>.pt structures=datasets/full_dataset/full_dataset
 ```
 
 #### Training
 Train QuanNet on your dataset:
 
 ```commandline
-quannet train dataset=datasets/quannet_test
+quannet train dataset=datasets/full_dataset
 ```
 
 ### Python API:
@@ -51,13 +51,13 @@ For those who prefer using QuanNet within a Python environment, you can seamless
 from quannet import QuanNet
 
 # Load a pretrained model
-model = QuanNet("models/quannet.pt")
+model = QuanNet("<path-to-trained-model>.pt")
 
 # Predict viscosity
-model.predict(structures="datasets/quannet_test/structures")
+model.predict(structures="datasets/full_dataset/full_dataset")
 
 # Train the model on your dataset
-model.train(dataset="datasets/quannet_test", epochs=3)
+model.train(dataset="datasets/full_dataset", epochs=3)
 ```
 
 ### Contribute:

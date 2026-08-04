@@ -20,6 +20,13 @@ from quannet.ssl.mae import MAELitModule
 from torch.utils.data import DataLoader, random_split
 from quannet.ssl.vicreg import VICRegLitModule
 from quannet.ssl.dataset import MAEPretrainDataset, VICRegPretrainDataset
+from quannet.ssl.clearml_utils import (
+    init_task,
+    add_clearml_args,
+    resolve_data_dirs,
+    upload_output_model,
+    ClearMLCheckpointUpload,
+)
 from lightning.pytorch.callbacks import ModelCheckpoint
 from quannet.models.resnet3d.model import ResNet3DModule
 
@@ -73,10 +80,16 @@ def main():
         default=None,
         help='a .ckpt written by a previous run of this script (e.g. checkpoints/last.ckpt)',
     )
+    add_clearml_args(ap)
     args = ap.parse_args()
 
     L.seed_everything(args.seed, workers=True)
     args.output_dir.mkdir(parents=True, exist_ok=True)
+
+    task = init_task(args.clearml_project, args.clearml_task_name or args.output_dir.name, args.clearml_tags)
+    if task is not None:
+        task.connect(vars(args))
+    args.data_dirs = resolve_data_dirs(args.data_dirs, args.clearml_dataset)
 
     encoder, module, dataset = build_module_and_dataset(
         args.method,
@@ -124,12 +137,13 @@ def main():
         save_top_k=1,
         monitor='val_loss' if val_loader is not None else None,
     )
+    clearml_upload_callback = ClearMLCheckpointUpload(task, checkpoint_dir, args.checkpoint_every_n_epochs)
     trainer = L.Trainer(
         max_epochs=args.max_epochs,
         accelerator=args.accelerator,
         devices=args.devices,
         default_root_dir=str(args.output_dir),
-        callbacks=[checkpoint_callback],
+        callbacks=[checkpoint_callback, clearml_upload_callback],
     )
     trainer.fit(
         module,
@@ -141,6 +155,10 @@ def main():
     encoder_path = args.output_dir / 'encoder.pt'
     torch.save(encoder.state_dict(), encoder_path)
     print(f'Saved pretrained encoder to {encoder_path}')
+
+    upload_output_model(task, encoder_path, name=f'{args.method}_encoder')
+    if task is not None:
+        task.close()
 
 
 if __name__ == '__main__':

@@ -7,7 +7,7 @@ training needs a GPU to be practical at any real scale.
 | Stage | Image | Hardware | Script |
 |---|---|---|---|
 | A. Data preprocessing | `quannet:latest` (`Dockerfile`, repo root) | CPU | `scripts/extract_antibody_chains.py`, `scripts/build_esp_dataset.py` |
-| B. SSL pretrain + fine-tune | `quannet-ssl` (`docker/ssl/Dockerfile`) | GPU | `quannet.ssl.pretrain`, `scripts/finetune_ssl_resnet.py` |
+| B. SSL pretrain + fine-tune | `quannet-ssl` (`docker/ssl/Dockerfile`) | GPU | `scripts/ssl_entrypoint.py` (dispatches to `quannet.ssl.pretrain` / `scripts/finetune_ssl_resnet.py`) |
 
 Self-supervised pretraining of the ResNet-3D ESP encoder (`quannet.models.resnet3d.model.ResNet3DModule`)
 on unlabeled electrostatic-potential (ESP) tensors, followed by fine-tuning
@@ -96,17 +96,24 @@ Requires a machine with an NVIDIA GPU + the NVIDIA Container Toolkit for
 this pipeline is compute-heavy enough that CPU training isn't practical
 beyond the tiny debug runs below.
 
+One image, one `ENTRYPOINT` (`scripts/ssl_entrypoint.py`): the first argument
+to `docker run` picks the subcommand (`pretrain` or `finetune`), everything
+after it is passed straight through to that script's own argparse - no more
+`--entrypoint` overrides needed to switch between the two stages.
+
 ### B3. Pretrain
 
 ```bash
 docker run --gpus all \
   -v /path/to/esp_caches:/data:ro \
   -v /path/to/runs:/app/runs \
-  quannet-ssl \
+  -e CLEARML_API_HOST=... -e CLEARML_API_ACCESS_KEY=... -e CLEARML_API_SECRET_KEY=... \
+  quannet-ssl pretrain \
     --method vicreg \
     --data-dirs /data/sabdab_esp/artefacts /data/oas_esp/artefacts \
     --output-dir /app/runs/ssl_vicreg \
-    --accelerator gpu --max-epochs 50 --batch-size 32
+    --accelerator gpu --max-epochs 50 --batch-size 32 \
+    --clearml-project quannet-ssl --clearml-task-name vicreg-sabdab-oas
 ```
 
 Swap `--method vicreg` for `--method mae` to run the other pretext task
@@ -117,12 +124,37 @@ Saves `<output-dir>/encoder.pt` - the encoder's `state_dict` only (the
 VICReg projector / MAE decoder heads are pretext-task-only and are not
 saved, matching how the original papers treat them).
 
+**ClearML integration (all flags optional - omit `--clearml-project` to run
+untracked, e.g. for the CPU debug run below):**
+
+- `--clearml-project` / `--clearml-task-name` / `--clearml-tags`: opens a
+  ClearML `Task` for this run. Credentials come from the environment
+  (`CLEARML_API_HOST`/`CLEARML_API_ACCESS_KEY`/`CLEARML_API_SECRET_KEY`, or a
+  mounted `clearml.conf`) - never baked into the image.
+- `--clearml-dataset DATASET_PROJECT/DATASET_NAME` (repeatable, or a bare
+  dataset ID): pulls a ClearML `Dataset`'s local copy and appends it to
+  `--data-dirs`, instead of (or alongside) `-v`-mounted cache directories.
+- The trained `encoder.pt` is uploaded as a ClearML `OutputModel` named
+  `<method>_encoder` when a Task is open, so `finetune`'s
+  `--clearml-ssl-checkpoint <task_id>` can pull it directly - no manual file
+  copying between pretrain and finetune runs.
+- The last Lightning checkpoint is also uploaded as a task artifact every
+  `--checkpoint-every-n-epochs` epochs, so a preempted spot/preemptible GPU
+  instance doesn't lose progress even if its local disk goes with it
+  (`--resume-from-checkpoint` still needs the actual `.ckpt` file - download
+  it back from the task's artifacts to resume on a fresh instance).
+
 ### Debug run without a GPU
 
 Everything above also runs on CPU with a small `--limit-structures` and
 `--batch-size`, e.g.:
 
 ```bash
+docker run quannet-ssl pretrain --method vicreg \
+  --data-dirs /path/to/small_cache --output-dir /tmp/ssl_debug \
+  --max-epochs 1 --batch-size 2 --limit-structures 6 --accelerator cpu
+
+# or without Docker, straight through the underlying script:
 python -m quannet.ssl.pretrain --method vicreg \
   --data-dirs /path/to/small_cache --output-dir /tmp/ssl_debug \
   --max-epochs 1 --batch-size 2 --limit-structures 6 --accelerator cpu
@@ -143,15 +175,24 @@ directly comparable:
 
 ```bash
 # Full fine-tune (encoder + head both train)
-python scripts/finetune_ssl_resnet.py --ssl_checkpoint runs/ssl_vicreg/encoder.pt
+docker run --gpus all -v /path/to/runs:/app/runs quannet-ssl finetune \
+  --ssl_checkpoint /app/runs/ssl_vicreg/encoder.pt
+# ...or pull the encoder straight from the pretrain Task instead of a local path:
+docker run --gpus all -v /path/to/runs:/app/runs quannet-ssl finetune \
+  --clearml-ssl-checkpoint <pretrain_task_id>
 
 # Linear probe (encoder frozen, only the regression head trains)
-python scripts/finetune_ssl_resnet.py --ssl_checkpoint runs/ssl_vicreg/encoder.pt --freeze_encoder
+docker run --gpus all -v /path/to/runs:/app/runs quannet-ssl finetune \
+  --ssl_checkpoint /app/runs/ssl_vicreg/encoder.pt --freeze_encoder
 ```
 
 Requires the labeled dataset's own ESP cache (`--cache_root`, default
 `runs/train2_fixed/artefacts`) to already exist - build it the same way as
 the pretraining caches, from `datasets/full_dataset/full_dataset/*.pdb`.
+Accepts the same `--clearml-project`/`--clearml-dataset` flags as `pretrain`
+(the latter overrides `--cache_root` when given); on completion it logs
+`spearman`/`mae`/`r2` as single-value metrics and uploads `predictions.csv`/
+`metrics.json` as task artifacts.
 
 ### B5. Comparing against the baselines
 

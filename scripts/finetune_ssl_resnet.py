@@ -33,6 +33,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from quannet.tasks import LitModel  # noqa: E402
 from quannet.config import get_config  # noqa: E402
 from quannet.dataset import QuanDataset, QuanSampler  # noqa: E402
+from quannet.ssl.clearml_utils import (  # noqa: E402
+    init_task,
+    add_clearml_args,
+    resolve_data_dirs,
+    resolve_ssl_checkpoint,
+)
 from quannet.models.resnet3d.model import ResNet3DModule  # noqa: E402
 
 
@@ -120,6 +126,12 @@ def main():
         help='encoder.pt from quannet.ssl.pretrain; omit for a from-scratch encoder (same as run_cv_resnet.py)',
     )
     ap.add_argument(
+        '--clearml-ssl-checkpoint',
+        default=None,
+        metavar='TASK_ID',
+        help='pull the encoder from this ClearML pretrain Task\'s output model instead of --ssl_checkpoint',
+    )
+    ap.add_argument(
         '--freeze_encoder',
         action='store_true',
         help='linear-probe: freeze the encoder trunk, only train the regression head',
@@ -133,9 +145,17 @@ def main():
     ap.add_argument('--weight_decay', type=float, default=1e-5)
     ap.add_argument('--accelerator', type=str, default='auto')
     ap.add_argument('--seed', type=int, default=42)
+    add_clearml_args(ap)
     args = ap.parse_args()
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    task = init_task(args.clearml_project, args.clearml_task_name or args.output_dir.name, args.clearml_tags)
+    if task is not None:
+        task.connect(vars(args))
+    if args.clearml_dataset:
+        args.cache_root = Path(resolve_data_dirs([], args.clearml_dataset)[0])
+    args.ssl_checkpoint = resolve_ssl_checkpoint(args.ssl_checkpoint, args.clearml_ssl_checkpoint)
+
     device = 'cuda' if (args.accelerator in ('auto', 'gpu') and torch.cuda.is_available()) else 'cpu'
     print(f'Device: {device}')
     if args.ssl_checkpoint:
@@ -227,6 +247,8 @@ def main():
         'target_standardized': True,
         'fold_val_loss': fold_val_loss,
     }
+    predictions_path = args.output_dir / 'predictions.csv'
+    metrics_path = args.output_dir / 'metrics.json'
     pd.DataFrame(
         {
             'Entity': entities,
@@ -235,8 +257,8 @@ def main():
             'Viscosity_at_150': y_true,
             'predicted': y_pred,
         }
-    ).to_csv(args.output_dir / 'predictions.csv', index=False)
-    with open(args.output_dir / 'metrics.json', 'w') as f:
+    ).to_csv(predictions_path, index=False)
+    with open(metrics_path, 'w') as f:
         json.dump(metrics, f, indent=2)
 
     print(
@@ -244,6 +266,14 @@ def main():
         f"MAE={metrics['mae']:.3f}  R2={metrics['r2']:.4f}"
     )
     print(f'Saved to {args.output_dir}')
+
+    if task is not None:
+        logger = task.get_logger()
+        for key in ('spearman', 'mae', 'r2'):
+            logger.report_single_value(name=key, value=metrics[key])
+        task.upload_artifact(name='predictions', artifact_object=str(predictions_path))
+        task.upload_artifact(name='metrics', artifact_object=str(metrics_path))
+        task.close()
 
 
 if __name__ == '__main__':

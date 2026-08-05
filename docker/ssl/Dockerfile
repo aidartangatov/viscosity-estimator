@@ -27,6 +27,7 @@ RUN pip install --no-cache-dir \
     "transformers>=4.30,<4.46" "scikit-learn>=1.3,<2" "scipy>=1.10,<2" "numpy<2"
 
 COPY pyproject.toml setup.py setup.cfg README.md ./
+COPY requirements ./requirements
 COPY src ./src
 RUN pip install --no-cache-dir --no-deps .
 

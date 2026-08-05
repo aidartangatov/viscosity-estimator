@@ -37,6 +37,7 @@ from quannet.ssl.clearml_utils import (  # noqa: E402
     init_task,
     add_clearml_args,
     resolve_data_dirs,
+    ClearMLMetricsLogger,
     resolve_ssl_checkpoint,
 )
 from quannet.models.resnet3d.model import ResNet3DModule  # noqa: E402
@@ -211,7 +212,10 @@ def main():
         trainer = L.Trainer(
             max_epochs=args.max_epochs,
             accelerator=args.accelerator,
-            callbacks=[EarlyStopping(monitor='val_loss', patience=args.patience, mode='min')],
+            callbacks=[
+                EarlyStopping(monitor='val_loss', patience=args.patience, mode='min'),
+                ClearMLMetricsLogger(task, series=f'fold_{fold}'),
+            ],
             logger=False,
             enable_checkpointing=False,
             enable_progress_bar=False,

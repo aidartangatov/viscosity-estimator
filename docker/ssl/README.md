@@ -221,6 +221,14 @@ untracked, e.g. for the CPU debug run below):**
 - `--clearml-dataset DATASET_PROJECT/DATASET_NAME` (repeatable, or a bare
   dataset ID): pulls a ClearML `Dataset`'s local copy and appends it to
   `--data-dirs`, instead of (or alongside) `-v`-mounted cache directories.
+- Live loss curves: every epoch's `train_loss`/`val_loss` (plus VICReg's
+  `repr_loss`/`std_loss`/`cov_loss`) are reported straight to the Task's
+  SCALARS tab via `quannet.ssl.clearml_utils.ClearMLMetricsLogger` - this is
+  independent of whichever logger Lightning happens to pick internally
+  (no `tensorboard` package is installed in the image, so relying on
+  ClearML's automatic TensorBoard capture would silently show nothing).
+  `finetune` reports the same per-fold, tagged `fold_<n>`, in addition to
+  the final `spearman`/`mae`/`r2` single-value metrics logged at the end.
 - The trained `encoder.pt` is uploaded as a ClearML `OutputModel` named
   `<method>_encoder` when a Task is open, so `finetune`'s
   `--clearml-ssl-checkpoint <task_id>` can pull it directly - no manual file

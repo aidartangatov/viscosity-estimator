@@ -84,6 +84,40 @@ def upload_output_model(task, path: Path, name: str):
     out_model.update_weights(weights_filename=str(path))
 
 
+class ClearMLMetricsLogger(L.Callback):
+    """Reports Lightning's per-epoch callback_metrics to the ClearML task's scalar plots.
+
+    Deliberately independent of Lightning's own logger (TensorBoard/CSV/None):
+    ClearML *can* auto-capture TensorBoard scalars, but only if the
+    `tensorboard` package happens to be installed and Task.init() ran before
+    the SummaryWriter was created - fragile to depend on implicitly, and
+    quannet.ssl.pretrain doesn't pin a logger at all (Lightning silently
+    falls back to CSVLogger without tensorboard, which ClearML does not
+    auto-capture). Reporting directly here means loss curves show up in the
+    Task UI regardless of what Lightning logger ends up in play.
+    """
+
+    def __init__(self, task, series: str = 'epoch'):
+        self.task = task
+        self.series = series
+
+    def _report(self, trainer):
+        if self.task is None:
+            return
+        logger = self.task.get_logger()
+        for name, value in trainer.callback_metrics.items():
+            try:
+                logger.report_scalar(title=name, series=self.series, value=float(value), iteration=trainer.current_epoch)
+            except (TypeError, ValueError):
+                continue  # non-scalar callback_metrics entry - nothing to plot
+
+    def on_train_epoch_end(self, trainer, pl_module):
+        self._report(trainer)
+
+    def on_validation_epoch_end(self, trainer, pl_module):
+        self._report(trainer)
+
+
 class ClearMLCheckpointUpload(L.Callback):
     """Uploads the last Lightning checkpoint to the ClearML task every N epochs.
 

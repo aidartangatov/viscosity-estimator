@@ -25,6 +25,7 @@ from quannet.ssl.clearml_utils import (
     add_clearml_args,
     resolve_data_dirs,
     upload_output_model,
+    ClearMLMetricsLogger,
     ClearMLCheckpointUpload,
 )
 from lightning.pytorch.callbacks import ModelCheckpoint
@@ -150,7 +151,7 @@ def main():
         accelerator=args.accelerator,
         devices=args.devices,
         default_root_dir=str(args.output_dir),
-        callbacks=[checkpoint_callback, clearml_upload_callback],
+        callbacks=[checkpoint_callback, clearml_upload_callback, ClearMLMetricsLogger(task)],
     )
     trainer.fit(
         module,

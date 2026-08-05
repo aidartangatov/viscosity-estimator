@@ -37,12 +37,21 @@ def add_clearml_args(parser):
 
 
 def init_task(project: Optional[str], task_name: str, tags=None):
-    """Returns a clearml.Task, or None if tracking wasn't requested (no --clearml-project)."""
+    """Returns a clearml.Task, or None if tracking wasn't requested (no --clearml-project).
+
+    output_uri=True makes ClearML actually upload models/artifacts to the
+    default files server (files.clear.ml for the hosted SaaS) instead of
+    just registering a reference to the local path - without it, OutputModel
+    silently stays "local-only" (visible in the Task UI but not fetchable
+    from another machine), which defeats both --clearml-ssl-checkpoint
+    (pulling the encoder into a separate finetune run/pod) and the
+    checkpoint-upload resilience callback below.
+    """
     if not project:
         return None
     from clearml import Task
 
-    return Task.init(project_name=project, task_name=task_name, tags=tags)
+    return Task.init(project_name=project, task_name=task_name, tags=tags, output_uri=True)
 
 
 def resolve_data_dirs(data_dirs: List[str], clearml_dataset_refs: List[str]) -> List[str]:

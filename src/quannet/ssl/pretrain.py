@@ -51,7 +51,12 @@ def build_module_and_dataset(method: str, data_dirs, **kwargs):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--method', choices=['vicreg', 'mae'], required=True)
-    ap.add_argument('--data-dirs', nargs='+', required=True, help='one or more ESP artefact-cache roots')
+    ap.add_argument(
+        '--data-dirs',
+        nargs='+',
+        default=[],
+        help='one or more ESP artefact-cache roots (in addition to any --clearml-dataset)',
+    )
     ap.add_argument('--output-dir', required=True, type=Path)
     ap.add_argument('--max-epochs', type=int, default=50)
     ap.add_argument('--batch-size', type=int, default=8)
@@ -90,6 +95,8 @@ def main():
     if task is not None:
         task.connect(vars(args))
     args.data_dirs = resolve_data_dirs(args.data_dirs, args.clearml_dataset)
+    if not args.data_dirs:
+        ap.error('no data: pass --data-dirs and/or --clearml-dataset')
 
     encoder, module, dataset = build_module_and_dataset(
         args.method,

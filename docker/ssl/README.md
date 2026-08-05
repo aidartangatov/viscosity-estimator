@@ -103,18 +103,32 @@ after it is passed straight through to that script's own argparse - no more
 
 ### B3. Pretrain
 
+The unlabeled corpus already lives in ClearML (project `quannet-ssl`, uploaded
+via `scripts/upload_clearml_dataset.py`) - no `-v` mount needed for the data
+itself, just for `runs/`:
+
+| Dataset | Structures | Compressed size |
+|---|---|---|
+| `quannet-ssl/sabdab_esp` | 3574 SAbDab Fv structures | 10.54 GiB |
+| `quannet-ssl/igfold_oas_esp_5k` | 2250 IgFold/OAS-predicted Fv structures | 6.54 GiB |
+| `quannet-ssl/labeled_esp` | 55/56 labeled antibodies (fine-tune only) | 0.49 GiB |
+
 ```bash
 docker run --gpus all \
-  -v /path/to/esp_caches:/data:ro \
   -v /path/to/runs:/app/runs \
   -e CLEARML_API_HOST=... -e CLEARML_API_ACCESS_KEY=... -e CLEARML_API_SECRET_KEY=... \
   quannet-ssl pretrain \
     --method vicreg \
-    --data-dirs /data/sabdab_esp/artefacts /data/oas_esp/artefacts \
+    --clearml-dataset quannet-ssl/sabdab_esp --clearml-dataset quannet-ssl/igfold_oas_esp_5k \
     --output-dir /app/runs/ssl_vicreg \
     --accelerator gpu --max-epochs 50 --batch-size 32 \
     --clearml-project quannet-ssl --clearml-task-name vicreg-sabdab-oas
 ```
+
+(`--data-dirs` is optional when `--clearml-dataset` is given - the resolved
+local copies of the ClearML datasets are appended to whatever `--data-dirs`
+you also pass. Use `--data-dirs` alone, or `--clearml-dataset` alone, or both
+together.)
 
 Swap `--method vicreg` for `--method mae` to run the other pretext task
 (same data/output-dir conventions, plus `--block-size`/`--mask-ratio` if you
@@ -174,25 +188,26 @@ encoder from a pretraining checkpoint instead of from scratch, and writes
 directly comparable:
 
 ```bash
-# Full fine-tune (encoder + head both train)
+# Full fine-tune (encoder + head both train), labeled ESP cache from ClearML
 docker run --gpus all -v /path/to/runs:/app/runs quannet-ssl finetune \
-  --ssl_checkpoint /app/runs/ssl_vicreg/encoder.pt
-# ...or pull the encoder straight from the pretrain Task instead of a local path:
-docker run --gpus all -v /path/to/runs:/app/runs quannet-ssl finetune \
-  --clearml-ssl-checkpoint <pretrain_task_id>
+  --clearml-dataset quannet-ssl/labeled_esp \
+  --clearml-ssl-checkpoint <pretrain_task_id> \
+  --clearml-project quannet-ssl --clearml-task-name finetune-vicreg-sabdab-oas
 
 # Linear probe (encoder frozen, only the regression head trains)
 docker run --gpus all -v /path/to/runs:/app/runs quannet-ssl finetune \
-  --ssl_checkpoint /app/runs/ssl_vicreg/encoder.pt --freeze_encoder
+  --clearml-dataset quannet-ssl/labeled_esp \
+  --clearml-ssl-checkpoint <pretrain_task_id> --freeze_encoder
 ```
 
 Requires the labeled dataset's own ESP cache (`--cache_root`, default
-`runs/train2_fixed/artefacts`) to already exist - build it the same way as
-the pretraining caches, from `datasets/full_dataset/full_dataset/*.pdb`.
-Accepts the same `--clearml-project`/`--clearml-dataset` flags as `pretrain`
-(the latter overrides `--cache_root` when given); on completion it logs
-`spearman`/`mae`/`r2` as single-value metrics and uploads `predictions.csv`/
-`metrics.json` as task artifacts.
+`runs/train2_fixed/artefacts`, or `--clearml-dataset quannet-ssl/labeled_esp`
+- already uploaded, 55/56 labeled antibodies, 3 augmentations each) to
+already exist. `--clearml-ssl-checkpoint <task_id>` pulls the encoder
+straight from a `pretrain` Task's output model instead of a local
+`--ssl_checkpoint` path. On completion it logs `spearman`/`mae`/`r2` as
+single-value metrics and uploads `predictions.csv`/`metrics.json` as task
+artifacts.
 
 ### B5. Comparing against the baselines
 

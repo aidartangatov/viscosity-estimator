@@ -171,7 +171,8 @@ def main():
 
     missing = [e for e in fold_df['Entity'] if e not in cache_idx]
     if missing:
-        raise ValueError(f'{len(missing)} entities have no cached ESP tensors: {missing}')
+        print(f'WARNING: dropping {len(missing)} entities with no cached ESP tensors: {missing}')
+        fold_df = fold_df[~fold_df['Entity'].isin(missing)].reset_index(drop=True)
 
     folds = sorted(fold_df['fold'].unique())
     oof = {}

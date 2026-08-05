@@ -8,7 +8,8 @@
 #   docker run --gpus all \
 #     -v /path/to/esp_caches:/data:ro \
 #     -v /path/to/runs:/app/runs \
-#     -e CLEARML_API_HOST=... -e CLEARML_API_ACCESS_KEY=... -e CLEARML_API_SECRET_KEY=... \
+#     -e CLEARML_API_HOST=... -e CLEARML_WEB_HOST=... -e CLEARML_FILES_HOST=... \
+#     -e CLEARML_API_ACCESS_KEY=... -e CLEARML_API_SECRET_KEY=... \
 #     quannet-ssl pretrain --method vicreg --data-dirs /data/sabdab /data/oas \
 #                 --output-dir /app/runs/ssl_vicreg --accelerator gpu \
 #                 --clearml-project quannet-ssl

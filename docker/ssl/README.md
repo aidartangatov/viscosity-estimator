@@ -31,45 +31,70 @@ order:
    ```bash
    docker run --rm --gpus all nvidia/cuda:11.7.1-base-ubuntu22.04 nvidia-smi
    ```
-2. **Clone the repo:**
-   ```bash
-   git clone git@github.com:aidartangatov/viscosity-estimator.git
-   cd viscosity-estimator/ViscosityEstimator
-   ```
-   No SSH key registered on this box yet? Clone over HTTPS with a
-   fine-grained GitHub personal access token instead:
-   `git clone https://<token>@github.com/aidartangatov/viscosity-estimator.git`.
-3. **Build the training image** (a few minutes - downloads the ~6GB PyTorch
-   CUDA base layer the first time):
-   ```bash
-   docker build -t quannet-ssl -f docker/ssl/Dockerfile .
-   ```
-4. **ClearML credentials** - from ClearML → Settings → Workspace → Create
+2. **Get the image.** `.github/workflows/build-ssl-image.yml` builds
+   `docker/ssl/Dockerfile` on GitHub's own runners and pushes it to
+   `ghcr.io/aidartangatov/quannet-ssl:latest` on every push touching
+   `docker/ssl/Dockerfile`/`src/`/`scripts/` (or via manual
+   `workflow_dispatch`) - this exists because building it locally repeatedly
+   stalled downloading the ~3GB PyTorch CUDA base layer over a home/office
+   connection.
+   - **On a bare VM with Docker** (supports `docker build`/`docker run
+     --gpus`): either `docker pull ghcr.io/aidartangatov/quannet-ssl:latest`
+     directly, or `git clone git@github.com:aidartangatov/viscosity-estimator.git`
+     + `docker build -t quannet-ssl -f docker/ssl/Dockerfile .` to build it
+     yourself.
+   - **On RunPod** (and similar "the pod IS the container" GPU rental
+     platforms): nested `docker build`/`docker run --gpus` inside a pod
+     doesn't work without a privileged template, so don't clone/build at
+     all - deploy the pod directly from the `ghcr.io/aidartangatov/quannet-ssl`
+     image:
+     1. Deploy → Pod → **Custom Container Image**:
+        `ghcr.io/aidartangatov/quannet-ssl:latest` (public image, no
+        registry credentials needed to pull it).
+     2. **Container Start Command**: the subcommand + flags only - RunPod
+        appends these to the image's `ENTRYPOINT`
+        (`scripts/ssl_entrypoint.py`), e.g. `pretrain --method vicreg
+        --clearml-dataset quannet-ssl/sabdab_esp --output-dir
+        /app/runs/ssl_vicreg --accelerator gpu --clearml-project
+        quannet-ssl` (see B3/B4 below for the full flag reference).
+     3. **Environment Variables**: the five `CLEARML_*` vars from step 3
+        below - this is what actually grants the pod permission to log the
+        experiment and pull datasets under your ClearML workspace.
+     4. Optional but recommended: attach a **Network Volume** mounted at
+        `/app/runs` so checkpoints/logs survive a pod restart even without
+        relying solely on ClearML artifact uploads.
+3. **ClearML credentials** - from ClearML → Settings → Workspace → Create
    new credentials, either export them as env vars or mount an existing
    `clearml.conf`:
    ```bash
    export CLEARML_API_HOST=https://api.clear.ml
+   export CLEARML_WEB_HOST=https://app.clear.ml
+   export CLEARML_FILES_HOST=https://files.clear.ml
    export CLEARML_API_ACCESS_KEY=...
    export CLEARML_API_SECRET_KEY=...
    ```
-5. **Smoke test first** - a couple of minutes, catches a broken image / CUDA
+   All five are required with no `clearml.conf` mounted - `CLEARML_FILES_HOST`
+   in particular is easy to miss and its absence breaks dataset
+   download/artifact upload, not just Task creation.
+4. **Smoke test first** - a couple of minutes, catches a broken image / CUDA
    mismatch / bad ClearML credentials cheaply, before spending real GPU-hours:
    ```bash
    docker run --gpus all \
-     -e CLEARML_API_HOST -e CLEARML_API_ACCESS_KEY -e CLEARML_API_SECRET_KEY \
+     -e CLEARML_API_HOST -e CLEARML_WEB_HOST -e CLEARML_FILES_HOST \
+     -e CLEARML_API_ACCESS_KEY -e CLEARML_API_SECRET_KEY \
      quannet-ssl pretrain --method vicreg \
      --clearml-dataset quannet-ssl/igfold_oas_esp_5k \
      --output-dir /tmp/smoke --max-epochs 1 --batch-size 2 \
      --limit-structures 6 --accelerator gpu \
      --clearml-project quannet-ssl --clearml-task-name smoke-test
    ```
-6. **Real pretrain run** - see B3 below. Runs for hours; launch it inside
+5. **Real pretrain run** - see B3 below. Runs for hours; launch it inside
    `tmux`/`screen` (or `docker run -d`) so a dropped SSH session doesn't
    kill it.
-7. **Fine-tune / evaluate** - see B4; chain straight off step 6 with
+6. **Fine-tune / evaluate** - see B4; chain straight off step 5 with
    `--clearml-ssl-checkpoint <pretrain_task_id>`, no manual file copying.
-8. **Compare against the baselines** - see B5.
-9. **Tear down the instance** - results (metrics, predictions, the trained
+7. **Compare against the baselines** - see B5.
+8. **Tear down the instance** - results (metrics, predictions, the trained
    encoder/checkpoint) are already in ClearML as Task artifacts/an
    `OutputModel`, independent of `/app/runs` on the box, so nothing needs to
    be copied off by hand before terminating it.
@@ -189,7 +214,8 @@ itself, just for `runs/`:
 ```bash
 docker run --gpus all \
   -v /path/to/runs:/app/runs \
-  -e CLEARML_API_HOST=... -e CLEARML_API_ACCESS_KEY=... -e CLEARML_API_SECRET_KEY=... \
+  -e CLEARML_API_HOST=... -e CLEARML_WEB_HOST=... -e CLEARML_FILES_HOST=... \
+  -e CLEARML_API_ACCESS_KEY=... -e CLEARML_API_SECRET_KEY=... \
   quannet-ssl pretrain \
     --method vicreg \
     --clearml-dataset quannet-ssl/sabdab_esp --clearml-dataset quannet-ssl/igfold_oas_esp_5k \
@@ -216,8 +242,10 @@ untracked, e.g. for the CPU debug run below):**
 
 - `--clearml-project` / `--clearml-task-name` / `--clearml-tags`: opens a
   ClearML `Task` for this run. Credentials come from the environment
-  (`CLEARML_API_HOST`/`CLEARML_API_ACCESS_KEY`/`CLEARML_API_SECRET_KEY`, or a
-  mounted `clearml.conf`) - never baked into the image.
+  (`CLEARML_API_HOST`/`CLEARML_WEB_HOST`/`CLEARML_FILES_HOST`/
+  `CLEARML_API_ACCESS_KEY`/`CLEARML_API_SECRET_KEY` - all five, with no
+  `clearml.conf` mounted), or a mounted `clearml.conf` - never baked into
+  the image.
 - `--clearml-dataset DATASET_PROJECT/DATASET_NAME` (repeatable, or a bare
   dataset ID): pulls a ClearML `Dataset`'s local copy and appends it to
   `--data-dirs`, instead of (or alongside) `-v`-mounted cache directories.

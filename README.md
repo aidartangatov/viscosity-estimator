@@ -60,6 +60,16 @@ model.predict(structures="datasets/full_dataset/full_dataset")
 model.train(dataset="datasets/full_dataset", epochs=3)
 ```
 
+## Self-supervised pretraining (GPU)
+
+Beyond the supervised CLI above, this repo also supports self-supervised
+pretraining of the ResNet-3D encoder on unlabeled antibody structures
+(SAbDab + IgFold/OAS), followed by fine-tuning on the labeled viscosity
+dataset - meant to run on a rented/cloud GPU box, with data pulled from
+ClearML rather than shipped by hand. See
+[`docker/ssl/README.md`](docker/ssl/README.md) for the full pipeline,
+including a step-by-step quick start for a fresh GPU rental.
+
 ### Contribute:
 If you are interested in contributing to the development of QuanNet or have any questions,
 feel free to open an issue or submit a pull request. We appreciate the community's support and contributions.

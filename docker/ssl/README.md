@@ -19,6 +19,79 @@ on the 56-antibody labeled viscosity dataset. Two pretext tasks:
 - **v2 - MAE** (`quannet.ssl.mae`): mask random cubic blocks of the ESP grid,
   reconstruct them from the unmasked context.
 
+## Quick start on a rented GPU server
+
+Data (ClearML, see B3/B4) and code (GitHub) both already live off-box, so a
+freshly rented GPU instance needs nothing pre-staged - just these steps, in
+order:
+
+1. **Verify the GPU is actually usable in a container** before building
+   anything - if this fails, it's a driver/NVIDIA Container Toolkit problem
+   on the host, not something the `quannet-ssl` image can fix:
+   ```bash
+   docker run --rm --gpus all nvidia/cuda:11.7.1-base-ubuntu22.04 nvidia-smi
+   ```
+2. **Clone the repo:**
+   ```bash
+   git clone git@github.com:aidartangatov/viscosity-estimator.git
+   cd viscosity-estimator/ViscosityEstimator
+   ```
+   No SSH key registered on this box yet? Clone over HTTPS with a
+   fine-grained GitHub personal access token instead:
+   `git clone https://<token>@github.com/aidartangatov/viscosity-estimator.git`.
+3. **Build the training image** (a few minutes - downloads the ~6GB PyTorch
+   CUDA base layer the first time):
+   ```bash
+   docker build -t quannet-ssl -f docker/ssl/Dockerfile .
+   ```
+4. **ClearML credentials** - from ClearML → Settings → Workspace → Create
+   new credentials, either export them as env vars or mount an existing
+   `clearml.conf`:
+   ```bash
+   export CLEARML_API_HOST=https://api.clear.ml
+   export CLEARML_API_ACCESS_KEY=...
+   export CLEARML_API_SECRET_KEY=...
+   ```
+5. **Smoke test first** - a couple of minutes, catches a broken image / CUDA
+   mismatch / bad ClearML credentials cheaply, before spending real GPU-hours:
+   ```bash
+   docker run --gpus all \
+     -e CLEARML_API_HOST -e CLEARML_API_ACCESS_KEY -e CLEARML_API_SECRET_KEY \
+     quannet-ssl pretrain --method vicreg \
+     --clearml-dataset quannet-ssl/igfold_oas_esp_5k \
+     --output-dir /tmp/smoke --max-epochs 1 --batch-size 2 \
+     --limit-structures 6 --accelerator gpu \
+     --clearml-project quannet-ssl --clearml-task-name smoke-test
+   ```
+6. **Real pretrain run** - see B3 below. Runs for hours; launch it inside
+   `tmux`/`screen` (or `docker run -d`) so a dropped SSH session doesn't
+   kill it.
+7. **Fine-tune / evaluate** - see B4; chain straight off step 6 with
+   `--clearml-ssl-checkpoint <pretrain_task_id>`, no manual file copying.
+8. **Compare against the baselines** - see B5.
+9. **Tear down the instance** - results (metrics, predictions, the trained
+   encoder/checkpoint) are already in ClearML as Task artifacts/an
+   `OutputModel`, independent of `/app/runs` on the box, so nothing needs to
+   be copied off by hand before terminating it.
+
+**VRAM sizing:** the encoder itself is tiny (~130K params). At the default
+`--batch-size 8`, VICReg needs roughly 1-2GB of activation memory and MAE
+roughly 1.5-2.5GB (its decoder upsamples back to the full 96³ grid, making
+it the heavier of the two pretext tasks). 8GB VRAM is a safe minimum, 12-16GB
+comfortable if you want to push `--batch-size` higher.
+
+**CUDA/driver mismatch:** `docker/ssl/Dockerfile` is pinned to
+`pytorch/pytorch:2.0.1-cuda11.7-cudnn8-runtime`. This works with any host
+driver new enough to run CUDA 11.7 (true for essentially all currently-rented
+GPUs), but if step 1 or the smoke test throws a CUDA/driver-version error on
+unusually new hardware, that base image tag is the first thing to bump.
+
+**Spot/preemptible instances:** `--checkpoint-every-n-epochs` (default 1)
+uploads the last Lightning checkpoint to the ClearML task every N epochs
+(see B3). If the instance is killed, download `last_checkpoint` from that
+task's artifacts on a fresh instance and resume with
+`--resume-from-checkpoint`.
+
 ## Stage A. Data preprocessing (APBS, CPU)
 
 Turns raw antibody structures (PDB files - either downloaded from SAbDab or

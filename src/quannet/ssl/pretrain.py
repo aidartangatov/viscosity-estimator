@@ -81,6 +81,12 @@ def main():
     ap.add_argument('--num-workers', type=int, default=4)
     ap.add_argument('--accelerator', default='auto')
     ap.add_argument('--devices', default='auto')
+    ap.add_argument(
+        '--precision',
+        default='32-true',
+        help="Lightning Trainer precision, e.g. 'bf16-mixed' on Ampere+/Ada GPUs to roughly halve "
+        'activation memory (and speed up matmuls) versus the default full fp32.',
+    )
     ap.add_argument('--seed', type=int, default=42)
     ap.add_argument('--limit-structures', type=int, default=None, help='debug: cap dataset size')
     ap.add_argument(
@@ -170,6 +176,7 @@ def main():
         max_epochs=args.max_epochs,
         accelerator=args.accelerator,
         devices=args.devices,
+        precision=args.precision,
         default_root_dir=str(args.output_dir),
         callbacks=[checkpoint_callback, clearml_upload_callback, ClearMLMetricsLogger(task)],
     )

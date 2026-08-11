@@ -39,6 +39,7 @@ from quannet.ssl.clearml_utils import (  # noqa: E402
     resolve_data_dirs,
     ClearMLMetricsLogger,
     resolve_ssl_checkpoint,
+    resolve_ssl_architecture,
 )
 from quannet.models.resnet3d.model import ResNet3DModule  # noqa: E402
 
@@ -137,6 +138,21 @@ def main():
         action='store_true',
         help='linear-probe: freeze the encoder trunk, only train the regression head',
     )
+    ap.add_argument(
+        '--n-channels',
+        type=int,
+        nargs='+',
+        default=[4, 8, 16, 32],
+        help='ResNet3DModule channel widths per stage - MUST match the checkpoint being loaded. '
+        'Auto-overridden when --clearml-ssl-checkpoint carries an encoder_arch artifact.',
+    )
+    ap.add_argument(
+        '--n-blocks',
+        type=int,
+        nargs='+',
+        default=[2, 2, 2, 2],
+        help='ResNet3DModule residual-block count per stage - MUST match the checkpoint being loaded.',
+    )
     ap.add_argument('--output_dir', type=Path, default=root / 'runs' / 'resnet3d_ssl_cv_lineage')
     ap.add_argument('--n_aug', type=int, default=3)
     ap.add_argument('--max_epochs', type=int, default=60)
@@ -156,6 +172,10 @@ def main():
     if args.clearml_dataset:
         args.cache_root = Path(resolve_data_dirs([], args.clearml_dataset)[0])
     args.ssl_checkpoint = resolve_ssl_checkpoint(args.ssl_checkpoint, args.clearml_ssl_checkpoint)
+    arch = resolve_ssl_architecture(args.clearml_ssl_checkpoint)
+    if arch is not None:
+        args.n_channels, args.n_blocks = arch['n_channels'], arch['n_blocks']
+        print(f"Encoder architecture from ClearML task: n_channels={args.n_channels} n_blocks={args.n_blocks}")
 
     device = 'cuda' if (args.accelerator in ('auto', 'gpu') and torch.cuda.is_available()) else 'cpu'
     print(f'Device: {device}')
@@ -202,7 +222,7 @@ def main():
         )
         val_loader = DataLoader(QuanDataset(Xva, yva), batch_size=args.batch_size, num_workers=0)
 
-        backbone = ResNet3DModule()
+        backbone = ResNet3DModule(n_channels=args.n_channels, n_blocks=args.n_blocks)
         if args.ssl_checkpoint:
             state_dict = torch.load(args.ssl_checkpoint, map_location='cpu')
             backbone.load_state_dict(state_dict, strict=True)
@@ -239,6 +259,8 @@ def main():
         'mae': float(mean_absolute_error(y_true, y_pred)),
         'r2': float(r2_score(y_true, y_pred)),
         'model_arch': 'resnet3d',
+        'n_channels': args.n_channels,
+        'n_blocks': args.n_blocks,
         'ssl_checkpoint': str(args.ssl_checkpoint) if args.ssl_checkpoint else None,
         'freeze_encoder': bool(args.freeze_encoder),
         'cv': 'lineage_folds',

@@ -84,6 +84,26 @@ def resolve_ssl_checkpoint(local_path: Optional[Path], clearml_task_ref: Optiona
     return Path(output_models[-1].get_local_copy())
 
 
+def resolve_ssl_architecture(clearml_task_ref: Optional[str]) -> Optional[dict]:
+    """Pulls the pretrain Task's `encoder_arch` artifact (n_channels/n_blocks), if any.
+
+    Lets fine-tuning reconstruct the exact ResNet3DModule shape a
+    --clearml-ssl-checkpoint was pretrained with, instead of relying on the
+    caller to pass matching --n-channels/--n-blocks by hand.
+    """
+    if not clearml_task_ref:
+        return None
+    from clearml import Task
+
+    import json
+
+    task = Task.get_task(task_id=clearml_task_ref)
+    artifact = task.artifacts.get('encoder_arch')
+    if artifact is None:
+        return None
+    return json.loads(Path(artifact.get_local_copy()).read_text())
+
+
 def upload_output_model(task, path: Path, name: str):
     if task is None:
         return

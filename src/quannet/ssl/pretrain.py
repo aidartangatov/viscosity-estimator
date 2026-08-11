@@ -31,13 +31,14 @@ from quannet.ssl.clearml_utils import (
 from lightning.pytorch.callbacks import ModelCheckpoint
 from quannet.models.resnet3d.model import ResNet3DModule
 
+import json
 import torch
 import argparse
 import lightning as L
 
 
-def build_module_and_dataset(method: str, data_dirs, **kwargs):
-    encoder = ResNet3DModule()
+def build_module_and_dataset(method: str, data_dirs, n_channels, n_blocks, **kwargs):
+    encoder = ResNet3DModule(n_channels=n_channels, n_blocks=n_blocks)
     if method == 'vicreg':
         dataset = VICRegPretrainDataset(data_dirs)
         module = VICRegLitModule(encoder, **kwargs)
@@ -63,6 +64,20 @@ def main():
     ap.add_argument('--batch-size', type=int, default=8)
     ap.add_argument('--lr', type=float, default=1e-4)
     ap.add_argument('--weight-decay', type=float, default=1e-5)
+    ap.add_argument(
+        '--n-channels',
+        type=int,
+        nargs='+',
+        default=[4, 8, 16, 32],
+        help='ResNet3DModule channel widths per stage (default: the original tiny ~130K-param encoder)',
+    )
+    ap.add_argument(
+        '--n-blocks',
+        type=int,
+        nargs='+',
+        default=[2, 2, 2, 2],
+        help='ResNet3DModule residual-block count per stage, same length as --n-channels',
+    )
     ap.add_argument('--num-workers', type=int, default=4)
     ap.add_argument('--accelerator', default='auto')
     ap.add_argument('--devices', default='auto')
@@ -102,12 +117,17 @@ def main():
     encoder, module, dataset = build_module_and_dataset(
         args.method,
         args.data_dirs,
+        n_channels=args.n_channels,
+        n_blocks=args.n_blocks,
         lr=args.lr,
         weight_decay=args.weight_decay,
     )
+    n_params = sum(p.numel() for p in encoder.parameters())
+    print(f'encoder: n_channels={args.n_channels} n_blocks={args.n_blocks} ({n_params:,} params)')
     if args.limit_structures:
         dataset = torch.utils.data.Subset(dataset, range(min(args.limit_structures, len(dataset))))
     print(f'{args.method}: {len(dataset)} training samples from {args.data_dirs}')
+    print(f'batch_size={args.batch_size} -> {len(dataset) // args.batch_size} batches/epoch')
 
     val_loader = None
     if args.val_fraction > 0:
@@ -164,8 +184,12 @@ def main():
     torch.save(encoder.state_dict(), encoder_path)
     print(f'Saved pretrained encoder to {encoder_path}')
 
+    arch_path = args.output_dir / 'encoder_arch.json'
+    arch_path.write_text(json.dumps({'n_channels': args.n_channels, 'n_blocks': args.n_blocks}))
+
     upload_output_model(task, encoder_path, name=f'{args.method}_encoder')
     if task is not None:
+        task.upload_artifact(name='encoder_arch', artifact_object=str(arch_path))
         task.close()
 
 
